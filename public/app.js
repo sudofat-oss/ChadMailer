@@ -1167,8 +1167,7 @@ function refreshCampaignSendButtonState() {
   const smtpSel = document.getElementById('smtpConfigSelect');
   const smtpVal = smtpSel && smtpSel.value;
   const rotationEnabled = !!document.getElementById('smtpRotationEnabled')?.checked;
-  const rotSel = document.getElementById('smtpRotationSelect');
-  const selectedRot = rotSel ? Array.from(rotSel.selectedOptions || []).map(o => String(o.value || '')).filter(Boolean) : [];
+  const selectedRot = getSelectedSmtpRotationIds();
   const hasSmtp = rotationEnabled ? selectedRot.length > 0 : !!(smtpVal && smtpVal !== '__new__');
   const csvOk = csvMappingHasRequiredEmail();
   const hasRecipients = (state.uploadedTotal || 0) > 0;
