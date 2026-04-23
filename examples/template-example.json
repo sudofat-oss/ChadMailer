@@ -1,0 +1,8 @@
+{
+    "id": "template_example_1",
+    "name": "Template d'exemple - Bienvenue",
+    "subject": "Bienvenue {{prenom}} !",
+    "html": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        body { font-family: Arial, sans-serif; }\n        .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n        .header { background: #667eea; color: white; padding: 20px; text-align: center; }\n        .content { padding: 20px; background: #f8f9fa; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>Bonjour {{prenom}} {{nom}} !</h1>\n        </div>\n        <div class=\"content\">\n            <p>Nous sommes ravis de vous contacter depuis {{ville}}.</p>\n            <p>Votre entreprise : {{entreprise}}</p>\n            <p>Date d'envoi : {{date}}</p>\n            <p>Cordialement,<br>L'équipe ChadMailer</p>\n        </div>\n    </div>\n</body>\n</html>",
+    "text": "Bonjour {{prenom}} {{nom}} !\n\nNous sommes ravis de vous contacter depuis {{ville}}.\nVotre entreprise : {{entreprise}}\nDate d'envoi : {{date}}\n\nCordialement,\nL'équipe ChadMailer"
+}
+

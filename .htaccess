@@ -1,0 +1,10 @@
+# Pour Apache - rediriger vers index.html pour l'UI
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.html [L,QSA]
+
+# Pour les requêtes API, utiliser index.php
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^api/(.*)$ index.php?action=$1 [L,QSA]
+

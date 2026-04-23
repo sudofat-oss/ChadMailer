@@ -1,0 +1,41 @@
+{
+    "alias": "chadmailer.phar",
+    "banner": {
+        "enabled": false
+    },
+    "chmod": "0755",
+    "directories": [
+        "src",
+        "public",
+        "config",
+        "templates",
+        "campaigns",
+        "uploads",
+        "storage"
+    ],
+    "files": [
+        "composer.json",
+        "composer.lock"
+    ],
+    "finder": [
+        {
+            "name": "*.php",
+            "exclude": [
+                "Tests",
+                "tests",
+                "test"
+            ],
+            "in": "vendor"
+        }
+    ],
+    "blacklist": [
+        "vendor/bin",
+        "vendor/composer/installed.json",
+        "vendor/composer/InstalledVersions.php"
+    ],
+    "main": "public/index.php",
+    "output": "chadmailer.phar",
+    "stub": true,
+    "shebang": false
+}
+
