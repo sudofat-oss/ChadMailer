@@ -159,7 +159,7 @@ class CampaignManager
     /**
      * @return array{from_email: string, from_name: ?string}
      */
-    private function resolveSenderForSmtp(array $config, string $smtpId): array
+    private function resolveSenderForSmtp(array $config, string $smtpId, array $smtpConfig = []): array
     {
         $globalFromEmail = \trim((string) ($config['from_email'] ?? ''));
         $globalFromName = \trim((string) ($config['from_name'] ?? ''));
@@ -184,6 +184,13 @@ class CampaignManager
             $customFromName = \trim((string) ($row['from_name'] ?? ''));
             if (!$useGlobalName) {
                 $resolvedFromName = $customFromName !== '' ? $customFromName : null;
+            }
+        }
+
+        if ($resolvedFromEmail === '') {
+            $provider = \strtolower(\trim((string) ($smtpConfig['provider'] ?? '')));
+            if ($provider === 'smtp' || $provider === 'office365') {
+                $resolvedFromEmail = \trim((string) ($smtpConfig['username'] ?? ''));
             }
         }
 
@@ -231,7 +238,7 @@ class CampaignManager
                 $this->writeCampaignLog($campaignId, "ERREUR: Configuration SMTP introuvable (ID: {$id})", 'error');
                 continue;
             }
-            $senderForSmtp = $this->resolveSenderForSmtp($config, $id);
+            $senderForSmtp = $this->resolveSenderForSmtp($config, $id, $smtpConfig);
             if (\trim((string) ($senderForSmtp['from_email'] ?? '')) === '') {
                 $this->writeCampaignLog($campaignId, "ERREUR: From email manquant pour SMTP {$id}", 'error');
                 continue;

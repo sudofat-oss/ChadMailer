@@ -1159,6 +1159,8 @@ function refreshCampaignSendButtonState() {
   const sendBtn = document.getElementById('sendBtn');
   const forceSendLink = document.getElementById('forceSendLink');
   if (!sendBtn) return;
+  const cfg = collectCampaignConfig();
+  syncCampaignFromEmailVisibility(cfg);
 
   const hasFile = !!state.uploadedFilePath;
   const hasTemplates = countSelectedTemplates() > 0;
@@ -1171,7 +1173,7 @@ function refreshCampaignSendButtonState() {
   const csvOk = csvMappingHasRequiredEmail();
   const hasRecipients = (state.uploadedTotal || 0) > 0;
 
-  const hasFrom = !!getFromEmailValue();
+  const hasFrom = hasUsableFromEmail(cfg);
 
   if (state.editingCampaignId) {
     const canSend = hasFile && csvOk && hasRecipients && hasTemplates && hasSmtp && hasFrom;
@@ -1538,17 +1540,47 @@ function listSmtpIdsFromConfig(cfg = {}) {
   return [];
 }
 
+function getSmtpConfigById(id) {
+  return (state.smtpConfigs || []).find(s => String(s.id) === String(id)) || null;
+}
+
+function getImplicitFromEmailForSmtpConfig(smtpConfig) {
+  if (!smtpConfig || typeof smtpConfig !== 'object') return '';
+  const provider = String(smtpConfig.provider || '').toLowerCase();
+  if (provider !== 'smtp' && provider !== 'office365') return '';
+  return String(smtpConfig.username || '').trim();
+}
+
+function canAutoResolveDefaultFromFromSmtp(config = {}) {
+  if (!config.smtp_rotation_enabled) return false;
+  if (config.smtp_sender_mode === 'per_smtp') return false;
+  const ids = listSmtpIdsFromConfig(config);
+  if (ids.length === 0) return false;
+  return ids.every(id => getImplicitFromEmailForSmtpConfig(getSmtpConfigById(id)) !== '');
+}
+
+function syncCampaignFromEmailVisibility(config = null) {
+  const group = document.getElementById('fromEmailGroup');
+  if (!group) return;
+  const cfg = config && typeof config === 'object' ? config : collectCampaignConfig();
+  group.classList.toggle('hidden', canAutoResolveDefaultFromFromSmtp(cfg));
+}
+
 function hasUsableFromEmail(config = {}) {
   const globalFrom = String(config.from_email || '').trim();
   if (globalFrom) return true;
-  if (config.smtp_sender_mode !== 'per_smtp') return false;
-  const per = config.smtp_per_smtp && typeof config.smtp_per_smtp === 'object' ? config.smtp_per_smtp : {};
   const ids = listSmtpIdsFromConfig(config);
   if (ids.length === 0) return false;
+  if (config.smtp_sender_mode !== 'per_smtp') {
+    return ids.every(id => getImplicitFromEmailForSmtpConfig(getSmtpConfigById(id)) !== '');
+  }
+  const per = config.smtp_per_smtp && typeof config.smtp_per_smtp === 'object' ? config.smtp_per_smtp : {};
   return ids.every(id => {
     const row = per[id];
     if (!row || typeof row !== 'object') return false;
-    if (row.use_default_from !== false) return false;
+    if (row.use_default_from !== false) {
+      return getImplicitFromEmailForSmtpConfig(getSmtpConfigById(id)) !== '';
+    }
     return String(row.from_email || '').trim() !== '';
   });
 }
@@ -1944,6 +1976,7 @@ function onCampaignSmtpSelectChange() {
     toggleCampaignSmtpNewPanel(false);
   }
   syncRotationSelectionWithPrimarySmtp();
+  syncCampaignFromEmailVisibility();
   refreshCampaignSendButtonState();
   void refreshCampaignVerifiedSenders({ silent: true });
 }
@@ -2052,12 +2085,14 @@ function initCampaignSmtpInline() {
       if (rotPanel) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
       updateSmtpSelectionUiMode();
       syncRotationSelectionWithPrimarySmtp();
+      syncCampaignFromEmailVisibility();
       void refreshCampaignVerifiedSenders({ silent: true });
       refreshCampaignSendButtonState();
     });
   }
   document.getElementById('smtpRotationSelect')?.addEventListener('change', () => {
     syncRotationSelectionWithPrimarySmtp();
+    syncCampaignFromEmailVisibility();
     void refreshCampaignVerifiedSenders({ silent: true });
     refreshCampaignSendButtonState();
   });
@@ -2065,6 +2100,7 @@ function initCampaignSmtpInline() {
   document.getElementById('smtpRotationMode')?.addEventListener('change', refreshCampaignSendButtonState);
   document.getElementById('smtpSenderMode')?.addEventListener('change', () => {
     syncSmtpSenderOverridesDisabledState();
+    syncCampaignFromEmailVisibility();
     refreshCampaignSendButtonState();
   });
   document.getElementById('smtpFromNameMode')?.addEventListener('change', () => {
@@ -2108,6 +2144,7 @@ function initCampaignSmtpInline() {
   updateSmtpSelectionUiMode();
   renderSmtpSenderOverridesList();
   syncSmtpSenderOverridesDisabledState();
+  syncCampaignFromEmailVisibility();
 }
 
 // ============================================
@@ -4079,6 +4116,7 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   syncRotationSelectionWithPrimarySmtp();
   renderSmtpSenderOverridesList(preferredSenderMap);
   syncSmtpSenderOverridesDisabledState();
+  syncCampaignFromEmailVisibility();
 
   await refreshCampaignVerifiedSenders({ silent: true, preferredEmail: preferredFromEmail });
 }
