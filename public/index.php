@@ -120,9 +120,14 @@ function spawnCampaignWorker(string $phpBin, string $cliPath, string $campaignId
  * - sinon: exécuter cli.php du projet
  */
 function resolveWorkerEntrypoint(): ?string {
-    $runningPhar = \Phar::running(false);
+    $runningPhar = \Phar::running(true);
     if (\is_string($runningPhar) && $runningPhar !== '') {
         return $runningPhar;
+    }
+
+    $pharFromEnv = getenv('CHADMAILER_PHAR_PATH');
+    if (\is_string($pharFromEnv) && $pharFromEnv !== '' && is_file($pharFromEnv)) {
+        return $pharFromEnv;
     }
 
     $cliPath = __DIR__ . '/../cli.php';

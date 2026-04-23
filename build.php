@@ -38,6 +38,7 @@ Phar::mapPhar('chadmailer.phar');
 // Obtenir le chemin du PHAR (utiliser __FILE__ qui contient le chemin complet)
 $pharPath = __FILE__;
 $pharUrl = 'phar://' . $pharPath;
+putenv('CHADMAILER_PHAR_PATH=' . $pharPath);
 
 // Créer un répertoire temporaire pour extraire les fichiers
 $tmpDir = sys_get_temp_dir() . '/chadmailer_' . uniqid();
@@ -85,6 +86,23 @@ function extractFromPhar($pharUrl, $sourcePath, $targetPath) {
     return $extracted;
 }
 
+function extractSingleFileFromPhar($pharUrl, $sourceFile, $targetFile) {
+    $fullSource = $pharUrl . '/' . $sourceFile;
+    if (!file_exists($fullSource)) {
+        return false;
+    }
+    $targetDir = dirname($targetFile);
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0755, true);
+    }
+    $content = file_get_contents($fullSource);
+    if ($content === false) {
+        return false;
+    }
+    file_put_contents($targetFile, $content);
+    return true;
+}
+
 // Extraire vendor (nécessaire pour autoload)
 $vendorExtracted = extractFromPhar($pharUrl, 'vendor', $tmpDir . '/vendor');
 if (!$vendorExtracted) {
@@ -99,6 +117,12 @@ if (!$srcExtracted) {
 
 // Extraire public
 extractFromPhar($pharUrl, 'public', $publicDir);
+
+// Extraire cli.php pour permettre le worker background même hors contexte PHAR direct
+$cliExtracted = extractSingleFileFromPhar($pharUrl, 'cli.php', $tmpDir . '/cli.php');
+if (!$cliExtracted) {
+    echo "⚠️  Attention: Impossible d'extraire cli.php, le mode background peut échouer\n";
+}
 
 // Copier le fichier de config
 $configSource = $pharUrl . '/config/config.php';
