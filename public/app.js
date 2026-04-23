@@ -46,37 +46,231 @@ const state = {
   }
 };
 
+const UI_TRANSLATIONS_FR_TO_EN = [
+  ['Réduire le panneau', 'Collapse panel'],
+  ['Retour à la liste', 'Back to list'],
+  ['Quitter l’édition', 'Exit edit mode'],
+  ['Mode édition', 'Edit mode'],
+  ['Destinataires', 'Recipients'],
+  ['Template(s)', 'Template(s)'],
+  ['Configuration', 'Configuration'],
+  ['Analyser & Envoyer', 'Analyze & Send'],
+  ['Détail région choisie', 'Selected region details'],
+  ['Scanner toutes les régions', 'Scan all regions'],
+  ['Tester la connexion', 'Test connection'],
+  ['Enregistrer & utiliser pour cette campagne', 'Save & use for this campaign'],
+  ['Email de test', 'Test email'],
+  ['Envoyer l’email de test', 'Send test email'],
+  ['Sélectionnez', 'Select'],
+  ['sélectionnez', 'select'],
+  ['Importer', 'Import'],
+  ['Lancer l’envoi', 'Start sending'],
+  ['Relancer', 'Relaunch'],
+  ['Pause', 'Pause'],
+  ['Reprendre', 'Resume'],
+  ['Supprimer', 'Delete'],
+  ['Dossier', 'Folder'],
+  ['dossier', 'folder'],
+  ['template', 'template'],
+  ['paramètres', 'settings'],
+  ['Paramètres', 'Settings'],
+  ['fournisseur', 'provider'],
+  ['Fournisseur', 'Provider'],
+  ['générique', 'generic'],
+  ['obligatoire', 'required'],
+  ['Optionnel', 'Optional'],
+  ['optionnel', 'optional'],
+  ['liste', 'list'],
+  ['noms de colonnes', 'column names'],
+  ['Variables personnalisées', 'Custom variables'],
+  ['expéditeurs autorisés', 'authorized senders'],
+  ['Aucune saisie manuelle', 'No manual input'],
+  ['identités', 'identities'],
+  ['introuvable', 'not found'],
+  ['sauvegarde', 'save'],
+  ['suppression', 'deletion'],
+  ['création', 'creation'],
+  ['mise à jour', 'update'],
+  ['prévisualisation', 'preview'],
+  ['prérempli', 'pre-filled'],
+  ['délivrabilité', 'deliverability'],
+  ['activité', 'activity'],
+  ['Terminé', 'Completed'],
+  ['Panneau', 'Panel'],
+  ['brouillon', 'draft'],
+  ['Brouillon actuel', 'Current draft'],
+  ['Aucun modèle pour l’instant', 'No template yet'],
+  ['Aucune campagne', 'No campaign'],
+  ['Aucune configuration SMTP / API', 'No SMTP / API configuration'],
+  ['Connexion en cours…', 'Connecting...'],
+  ['Interrogation des API en cours…', 'Querying APIs...'],
+  ['Interrogation de l’API Amazon SES…', 'Querying Amazon SES API...'],
+  ['Région Amazon SES', 'Amazon SES region'],
+  ['nom affiché', 'display name'],
+  ['Nom affiché', 'Display name'],
+  ['From (nom affiché)', 'From (display name)'],
+  ['Ajustez la liste, l’expéditeur, le SMTP ou les templates, enregistrez puis lancez l’envoi pour appliquer les changements.', 'Adjust list, sender, SMTP or templates, save, then start sending to apply changes.'],
+  ['Pour changer la liste, l’expéditeur ou le SMTP avant un nouvel envoi, utilisez « Modifier la campagne ».', 'To change list, sender, or SMTP before a new send, use "Edit campaign".'],
+  ['Impossible de localiser le worker (cli.php/PHAR).', 'Unable to locate worker (cli.php/PHAR).'],
+  ['Chargement...', 'Loading...'],
+  ['Chargement des expéditeurs…', 'Loading senders...'],
+  ['Chargement des identités…', 'Loading identities...'],
+  ['Erreur réseau', 'Network error'],
+  ['Erreur API', 'API error'],
+  ['Erreur', 'Error'],
+  ['Échec', 'Failed'],
+  ['succès', 'success'],
+  ['Connexion réussie.', 'Connection successful.'],
+  ['Aucun log disponible pour cette campagne.', 'No logs available for this campaign.'],
+  ['en attente du worker…', 'waiting for worker...'],
+  ['en pause', 'paused'],
+  ['terminé', 'completed'],
+  ['Campagnes', 'Campaigns'],
+  ['Campagne', 'Campaign'],
+  ['Envoyés', 'Sent'],
+  ['Échecs', 'Failed'],
+  ['En attente', 'Pending'],
+  ['Configuration SMTP', 'SMTP configuration'],
+  ['Configurations SMTP / API', 'SMTP / API configurations'],
+  ['Nouveau dossier', 'New folder'],
+  ['Nouveau template', 'New template'],
+  ['Annuler', 'Cancel'],
+  ['Enregistrer', 'Save'],
+  ['Analyser', 'Analyze'],
+  ['Envoyer', 'Send'],
+  ['Connexion', 'Connection'],
+  ['délai', 'delay'],
+  ['Délai', 'Delay'],
+  ['expéditeur', 'sender'],
+  ['Expéditeur', 'Sender'],
+  ['destinataire', 'recipient'],
+  ['Destinataire', 'Recipient'],
+  ['Saisie manuelle', 'Manual input'],
+  ['Configuration enregistrée', 'Saved configuration'],
+  ['Choisissez', 'Choose'],
+  ['Choisir', 'Choose'],
+  ['Aucun', 'No'],
+  ['Aucune', 'No'],
+  ['Région', 'Region'],
+  ['Clé API', 'API key'],
+  ['Mot de passe', 'Password'],
+  ['Prénom', 'First name'],
+  ['États-Unis / global', 'United States / global'],
+  ['Union européenne', 'European Union'],
+  ['Aperçu avec données réelles — modifiez le HTML puis réappliquez pour mettre à jour.', 'Preview with real data - edit the HTML and reapply to refresh.'],
+  ['Le nom du template est requis.', 'Template name is required.'],
+  ['Le nom du dossier est requis.', 'Folder name is required.'],
+  ['Le nom de la configuration est requis.', 'Configuration name is required.'],
+  ['URL de désabonnement sauvegardée.', 'Unsubscribe URL saved.'],
+  ['Copié !', 'Copied!']
+];
+
+function translateUiText(value) {
+  if (value == null) return value;
+  let out = String(value);
+  UI_TRANSLATIONS_FR_TO_EN.forEach(([fr, en]) => {
+    out = out.split(fr).join(en);
+  });
+  return out;
+}
+
+function translateUiNodeText(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (node.parentElement && !['SCRIPT', 'STYLE'].includes(node.parentElement.tagName)) {
+      const translated = translateUiText(node.nodeValue);
+      if (translated !== node.nodeValue) node.nodeValue = translated;
+    }
+    node = walker.nextNode();
+  }
+}
+
+function translateUiAttributes(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[title],[placeholder],[aria-label]').forEach(el => {
+    ['title', 'placeholder', 'aria-label'].forEach(attr => {
+      if (el.hasAttribute(attr)) {
+        const current = el.getAttribute(attr) || '';
+        const translated = translateUiText(current);
+        if (translated !== current) el.setAttribute(attr, translated);
+      }
+    });
+  });
+}
+
+function applyEnglishUiTranslation(root) {
+  const target = root || document.body;
+  if (!target) return;
+  translateUiNodeText(target);
+  translateUiAttributes(target);
+}
+
+function installUiTranslationObserver() {
+  if (document.documentElement) document.documentElement.lang = 'en';
+  applyEnglishUiTranslation(document.body);
+
+  const origAlert = window.alert;
+  window.alert = function patchedAlert(message) {
+    return origAlert.call(window, translateUiText(message));
+  };
+  const origConfirm = window.confirm;
+  window.confirm = function patchedConfirm(message) {
+    return origConfirm.call(window, translateUiText(message));
+  };
+
+  const observer = new MutationObserver(mutations => {
+    mutations.forEach(m => {
+      if (m.type === 'characterData' && m.target && m.target.parentElement) {
+        const translated = translateUiText(m.target.nodeValue);
+        if (translated !== m.target.nodeValue) m.target.nodeValue = translated;
+        return;
+      }
+      m.addedNodes.forEach(n => {
+        if (n.nodeType === Node.TEXT_NODE) {
+          const translated = translateUiText(n.nodeValue);
+          if (translated !== n.nodeValue) n.nodeValue = translated;
+        } else if (n.nodeType === Node.ELEMENT_NODE) {
+          applyEnglishUiTranslation(n);
+        }
+      });
+    });
+  });
+  if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+
 /**
  * Régions SES (formulaires) — aligné sur SesAccountInspector::PROBE_REGIONS (PHP).
  * @type {{ v: string, l: string }[]}
  */
 const SES_AWS_REGION_OPTIONS = [
-  { v: 'af-south-1', l: 'Afrique (Le Cap) — af-south-1' },
-  { v: 'ap-northeast-1', l: 'Asie (Tokyo) — ap-northeast-1' },
-  { v: 'ap-northeast-2', l: 'Asie (Séoul) — ap-northeast-2' },
-  { v: 'ap-northeast-3', l: 'Asie (Osaka) — ap-northeast-3' },
-  { v: 'ap-south-1', l: 'Asie (Mumbai) — ap-south-1' },
-  { v: 'ap-south-2', l: 'Asie (Hyderabad) — ap-south-2' },
-  { v: 'ap-southeast-1', l: 'Asie (Singapour) — ap-southeast-1' },
-  { v: 'ap-southeast-2', l: 'Asie (Sydney) — ap-southeast-2' },
-  { v: 'ap-southeast-3', l: 'Asie (Jakarta) — ap-southeast-3' },
-  { v: 'ap-southeast-5', l: 'Asie (Malaisie) — ap-southeast-5' },
-  { v: 'ca-central-1', l: 'Canada (Centre) — ca-central-1' },
-  { v: 'ca-west-1', l: 'Canada Ouest (Calgary) — ca-west-1' },
-  { v: 'eu-central-1', l: 'Europe (Francfort) — eu-central-1' },
+  { v: 'af-south-1', l: 'Africa (Cape Town) — af-south-1' },
+  { v: 'ap-northeast-1', l: 'Asia Pacific (Tokyo) — ap-northeast-1' },
+  { v: 'ap-northeast-2', l: 'Asia Pacific (Seoul) — ap-northeast-2' },
+  { v: 'ap-northeast-3', l: 'Asia Pacific (Osaka) — ap-northeast-3' },
+  { v: 'ap-south-1', l: 'Asia Pacific (Mumbai) — ap-south-1' },
+  { v: 'ap-south-2', l: 'Asia Pacific (Hyderabad) — ap-south-2' },
+  { v: 'ap-southeast-1', l: 'Asia Pacific (Singapore) — ap-southeast-1' },
+  { v: 'ap-southeast-2', l: 'Asia Pacific (Sydney) — ap-southeast-2' },
+  { v: 'ap-southeast-3', l: 'Asia Pacific (Jakarta) — ap-southeast-3' },
+  { v: 'ap-southeast-5', l: 'Asia Pacific (Malaysia) — ap-southeast-5' },
+  { v: 'ca-central-1', l: 'Canada (Central) — ca-central-1' },
+  { v: 'ca-west-1', l: 'Canada West (Calgary) — ca-west-1' },
+  { v: 'eu-central-1', l: 'Europe (Frankfurt) — eu-central-1' },
   { v: 'eu-central-2', l: 'Europe (Zurich) — eu-central-2' },
   { v: 'eu-north-1', l: 'Europe (Stockholm) — eu-north-1' },
   { v: 'eu-south-1', l: 'Europe (Milan) — eu-south-1' },
-  { v: 'eu-west-1', l: 'Europe (Irlande) — eu-west-1' },
-  { v: 'eu-west-2', l: 'Europe (Londres) — eu-west-2' },
+  { v: 'eu-west-1', l: 'Europe (Ireland) — eu-west-1' },
+  { v: 'eu-west-2', l: 'Europe (London) — eu-west-2' },
   { v: 'eu-west-3', l: 'Europe (Paris) — eu-west-3' },
-  { v: 'il-central-1', l: 'Israël (Tel Aviv) — il-central-1' },
-  { v: 'me-central-1', l: 'Moyen-Orient (Émirats) — me-central-1' },
-  { v: 'me-south-1', l: 'Moyen-Orient (Bahreïn) — me-south-1' },
-  { v: 'sa-east-1', l: 'Amérique du Sud (São Paulo) — sa-east-1' },
-  { v: 'us-east-1', l: 'USA (Virginie N.) — us-east-1' },
+  { v: 'il-central-1', l: 'Israel (Tel Aviv) — il-central-1' },
+  { v: 'me-central-1', l: 'Middle East (UAE) — me-central-1' },
+  { v: 'me-south-1', l: 'Middle East (Bahrain) — me-south-1' },
+  { v: 'sa-east-1', l: 'South America (Sao Paulo) — sa-east-1' },
+  { v: 'us-east-1', l: 'US East (N. Virginia) — us-east-1' },
   { v: 'us-east-2', l: 'USA (Ohio) — us-east-2' },
-  { v: 'us-west-1', l: 'USA (Californie N.) — us-west-1' },
+  { v: 'us-west-1', l: 'US West (N. California) — us-west-1' },
   { v: 'us-west-2', l: 'USA (Oregon) — us-west-2' },
   { v: 'us-gov-east-1', l: 'AWS GovCloud (US-East) — us-gov-east-1' },
   { v: 'us-gov-west-1', l: 'AWS GovCloud (US-West) — us-gov-west-1' }
@@ -5660,6 +5854,7 @@ async function restoreUiStateAfterLoad() {
 // ============================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+  installUiTranslationObserver();
   if (typeof tyHydrateIcons === 'function') tyHydrateIcons();
   applySidebarPanelFromStorage();
   populateAwsRegionSelects();
