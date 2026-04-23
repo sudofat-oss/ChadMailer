@@ -82,13 +82,18 @@ function jsonSuccess($data = null): void {
  * Lance l'envoi de campagne en arrière-plan (Linux/macOS + Windows).
  */
 function spawnCampaignWorker(string $phpBin, string $cliPath, string $campaignId): bool {
+    $quoteCmdArg = static function (string $value): string {
+        // Quoting compatible cmd.exe
+        return '"' . str_replace('"', '""', $value) . '"';
+    };
+
     // Windows: cmd /c start /B ... > NUL 2>&1
     if (DIRECTORY_SEPARATOR === '\\') {
         $cmd = sprintf(
-            'cmd /c start "" /B %s %s send %s > NUL 2>&1',
-            escapeshellarg($phpBin),
-            escapeshellarg($cliPath),
-            escapeshellarg($campaignId)
+            'cmd /d /c start "" /B %s %s send %s > NUL 2>&1',
+            $quoteCmdArg($phpBin),
+            $quoteCmdArg($cliPath),
+            $quoteCmdArg($campaignId)
         );
         try {
             $handle = @popen($cmd, 'r');
@@ -134,6 +139,15 @@ function resolveWorkerEntrypoint(): ?string {
     if (is_file($cliPath)) {
         $resolved = realpath($cliPath);
         return $resolved !== false ? $resolved : $cliPath;
+    }
+
+    $tmpDir = getenv('CHADMAILER_TMP_DIR');
+    if (\is_string($tmpDir) && $tmpDir !== '') {
+        $tmpCli = rtrim($tmpDir, "/\\") . DIRECTORY_SEPARATOR . 'cli.php';
+        if (is_file($tmpCli)) {
+            $resolved = realpath($tmpCli);
+            return $resolved !== false ? $resolved : $tmpCli;
+        }
     }
 
     return null;

@@ -90,7 +90,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
   $webContent = @'
 param(
   [int]$Port = 8000,
-  [string]$Host = "localhost"
+  [string]$ListenHost = "localhost"
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -100,10 +100,10 @@ $ServerScript = Join-Path $ScriptDir "chadmailer.ps1"
 Start-Process powershell -WindowStyle Hidden -ArgumentList @(
   "-NoProfile",
   "-ExecutionPolicy", "Bypass",
-  "-Command", "Start-Sleep -Seconds 2; Start-Process 'http://$Host`:$Port/index.html'"
+  "-Command", "Start-Sleep -Seconds 2; Start-Process 'http://$ListenHost`:$Port/index.html'"
 ) | Out-Null
 
-& $ServerScript $Port $Host
+& $ServerScript $Port $ListenHost
 '@
   Set-Content -Path $WebLauncherPath -Value $webContent -Encoding UTF8
 }
