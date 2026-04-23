@@ -21,6 +21,7 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
 $PharPath = Join-Path $InstallDir "chadmailer.phar"
 $CmdLauncherPath = Join-Path $InstallDir "chadmailer.cmd"
 $PsLauncherPath = Join-Path $InstallDir "chadmailer.ps1"
+$WebLauncherPath = Join-Path $InstallDir "chadmailer-webapp.ps1"
 
 function Write-Info([string]$Message) { Write-Host $Message -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host $Message -ForegroundColor Green }
@@ -85,6 +86,52 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 & php (Join-Path $ScriptDir "chadmailer.phar") @Args
 '@
   Set-Content -Path $PsLauncherPath -Value $psContent -Encoding UTF8
+
+  $webContent = @'
+param(
+  [int]$Port = 8000,
+  [string]$Host = "localhost"
+)
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ServerScript = Join-Path $ScriptDir "chadmailer.ps1"
+
+# Start the web server in a separate window so this script can open the browser.
+Start-Process powershell -ArgumentList @(
+  "-NoProfile",
+  "-ExecutionPolicy", "Bypass",
+  "-File", "`"$ServerScript`"",
+  $Port,
+  $Host
+)
+
+Start-Sleep -Seconds 2
+Start-Process "http://$Host`:$Port/index.html"
+'@
+  Set-Content -Path $WebLauncherPath -Value $webContent -Encoding UTF8
+}
+
+function Write-DesktopShortcut {
+  try {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    if ([string]::IsNullOrWhiteSpace($desktopPath)) {
+      Write-Warn "Impossible de détecter le Bureau, raccourci non créé."
+      return
+    }
+
+    $shortcutPath = Join-Path $desktopPath "ChadMailer.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$WebLauncherPath`""
+    $shortcut.WorkingDirectory = $InstallDir
+    $shortcut.Description = "Launch ChadMailer web app"
+    $shortcut.IconLocation = "powershell.exe,0"
+    $shortcut.Save()
+    Write-Ok "Raccourci Bureau créé: $shortcutPath"
+  } catch {
+    Write-Warn "Création du raccourci Bureau échouée: $($_.Exception.Message)"
+  }
 }
 
 Write-Info "==> Installation $AppName"
@@ -119,9 +166,11 @@ foreach ($dir in @("templates", "campaigns", "uploads", "storage")) {
   New-Item -ItemType Directory -Path (Join-Path $InstallDir $dir) -Force | Out-Null
 }
 Write-Launchers
+Write-DesktopShortcut
 
 Write-Host ""
 Write-Ok "✅ Installation terminée."
 Write-Host "Lancer le serveur (cmd): `"$CmdLauncherPath`"" -ForegroundColor Gray
 Write-Host "Lancer le serveur (PowerShell): `"$PsLauncherPath`"" -ForegroundColor Gray
+Write-Host "Lancer + ouvrir la webapp: `"$WebLauncherPath`"" -ForegroundColor Gray
 Write-Host "Exemple campagne: php `"$PharPath`" send <campaignId>" -ForegroundColor Gray
