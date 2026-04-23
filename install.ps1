@@ -4,10 +4,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
 $AppName = "ChadMailer"
 $MinPhpVersion = [Version]"8.1.0"
-$DefaultReleaseUrl = "https://github.com/chadmailer/chadmailer/releases/latest/download/chadmailer.phar"
+$DefaultReleaseUrl = "https://github.com/sudofat-oss/ChadMailer/releases/latest/download/chadmailer.phar"
 
 if ([string]::IsNullOrWhiteSpace($ReleaseUrl)) {
   $ReleaseUrl = if ($env:CHADMAILER_RELEASE_URL) { $env:CHADMAILER_RELEASE_URL } else { $DefaultReleaseUrl }
@@ -94,7 +95,21 @@ Install-PhpIfNeeded
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Write-Info "==> Téléchargement du PHAR..."
-Invoke-WebRequest -Uri $ReleaseUrl -OutFile $PharPath
+$downloaded = $false
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+  try {
+    Invoke-WebRequest -Uri $ReleaseUrl -OutFile $PharPath
+    $downloaded = $true
+    break
+  } catch {
+    if ($attempt -ge 3) { throw }
+    Write-Warn "Téléchargement échoué (tentative $attempt/3), nouvelle tentative..."
+    Start-Sleep -Seconds (2 * $attempt)
+  }
+}
+if (-not $downloaded) {
+  Fail "Téléchargement du PHAR échoué après 3 tentatives."
+}
 
 if ((Get-Item $PharPath).Length -le 0) {
   Fail "Téléchargement du PHAR échoué (fichier vide)."

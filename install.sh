@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_NAME="ChadMailer"
 MIN_PHP="8.1.0"
-DEFAULT_RELEASE_URL="https://github.com/chadmailer/chadmailer/releases/latest/download/chadmailer.phar"
+DEFAULT_RELEASE_URL="https://github.com/sudofat-oss/ChadMailer/releases/latest/download/chadmailer.phar"
 RELEASE_URL="${CHADMAILER_RELEASE_URL:-$DEFAULT_RELEASE_URL}"
 INSTALL_DIR="${CHADMAILER_INSTALL_DIR:-$PWD/chadmailer}"
 PHAR_FILE="$INSTALL_DIR/chadmailer.phar"
