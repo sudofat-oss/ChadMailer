@@ -1,13 +1,13 @@
 # ChadMailer
 
-ChadMailer est un sender email avec interface web pour :
+ChadMailer is an email sender with a web interface to:
 
-- configurer ton provider (SMTP, SES, SendGrid, Brevo, etc.)
-- créer des templates
-- lancer des campagnes depuis des listes CSV
-- faire des tests d'envoi rapidement
+- configure your provider (SMTP, SES, SendGrid, Brevo, etc.)
+- create templates
+- launch campaigns from CSV lists
+- run quick test sends
 
-## Installation rapide
+## Quick installation
 
 ### Linux
 
@@ -21,9 +21,9 @@ curl -fsSL https://raw.githubusercontent.com/sudofat-oss/ChadMailer/main/install
 iwr -useb https://raw.githubusercontent.com/sudofat-oss/ChadMailer/main/install.ps1 | iex
 ```
 
-Les scripts installent PHP automatiquement si nécessaire, téléchargent le `.phar` et préparent le dossier `chadmailer`.
+The scripts automatically install PHP if needed, download the `.phar`, and prepare the `chadmailer` folder.
 
-## Lancer l'application
+## Run the application
 
 ### Linux
 
@@ -37,25 +37,25 @@ Les scripts installent PHP automatiquement si nécessaire, téléchargent le `.p
 .\chadmailer\chadmailer.ps1
 ```
 
-Puis ouvre :
+Then open:
 
 - `http://localhost:8000/index.html`
 
-## Commandes utiles
+## Useful commands
 
-Lancer sur un port personnalisé :
+Run on a custom port:
 
 ```bash
 ./chadmailer/chadmailer 8080 0.0.0.0
 ```
 
-Envoyer une campagne via CLI :
+Send a campaign via CLI:
 
 ```bash
 ./chadmailer/chadmailer send <campaignId>
 ```
 
-## Installation depuis les sources (optionnel)
+## Install from source (optional)
 
 ```bash
 composer install
