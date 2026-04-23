@@ -78,6 +78,42 @@ function jsonSuccess($data = null): void {
     exit;
 }
 
+/**
+ * Lance l'envoi de campagne en arrière-plan (Linux/macOS + Windows).
+ */
+function spawnCampaignWorker(string $phpBin, string $cliPath, string $campaignId): bool {
+    // Windows: cmd /c start /B ... > NUL 2>&1
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $cmd = sprintf(
+            'cmd /c start "" /B %s %s send %s > NUL 2>&1',
+            escapeshellarg($phpBin),
+            escapeshellarg($cliPath),
+            escapeshellarg($campaignId)
+        );
+        try {
+            $handle = @popen($cmd, 'r');
+            if ($handle === false) {
+                return false;
+            }
+            pclose($handle);
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    // Linux/macOS: ... > /dev/null 2>&1 &
+    $cmd = sprintf(
+        '%s %s send %s > /dev/null 2>&1 &',
+        escapeshellcmd($phpBin),
+        escapeshellarg($cliPath),
+        escapeshellarg($campaignId)
+    );
+    exec($cmd, $out, $exitCode);
+
+    return $exitCode === 0;
+}
+
 try {
     // Initialisation
     $configManager = new ConfigManager();
@@ -375,7 +411,13 @@ try {
                 }
                 $phpBin = PHP_BINARY;
                 $cliPath = realpath(__DIR__ . '/../cli.php');
-                exec(sprintf('%s %s send %s > /dev/null 2>&1 &', escapeshellcmd($phpBin), escapeshellarg($cliPath), escapeshellarg($campaignId)));
+                if (!$cliPath) {
+                    jsonError('Impossible de localiser cli.php', 500);
+                }
+                $spawned = spawnCampaignWorker($phpBin, $cliPath, $campaignId);
+                if (!$spawned) {
+                    jsonError('Impossible de démarrer le worker en arrière-plan.', 500);
+                }
                 jsonSuccess(['status' => 'started', 'campaign_id' => $campaignId]);
             }
             break;
