@@ -102,15 +102,7 @@ class CampaignManager
      */
     private function sleepRandomInterEmailDelay(float $delayMin, float $delayMax): void
     {
-        if ($delayMax <= 0.0) {
-            return;
-        }
-        $lo = max(0.0, $delayMin);
-        $hi = max($lo, $delayMax);
-        $span = $hi - $lo;
-        $rm = \mt_getrandmax();
-        $u = $rm > 0 ? \mt_rand() / $rm : 0.5;
-        $seconds = $lo + $u * $span;
+        $seconds = $this->computeRandomInterEmailDelaySeconds($delayMin, $delayMax);
         if ($seconds <= 0.0) {
             return;
         }
@@ -121,6 +113,97 @@ class CampaignManager
         $micros = \min($micros, 300_000_000);
 
         \usleep($micros);
+    }
+
+    private function computeRandomInterEmailDelaySeconds(float $delayMin, float $delayMax): float
+    {
+        if ($delayMax <= 0.0) {
+            return 0.0;
+        }
+        $lo = max(0.0, $delayMin);
+        $hi = max($lo, $delayMax);
+        $span = $hi - $lo;
+        $rm = \mt_getrandmax();
+        $u = $rm > 0 ? \mt_rand() / $rm : 0.5;
+
+        return $lo + $u * $span;
+    }
+
+    /**
+     * @return array{
+     *   mode: 'sequential'|'parallel',
+     *   every: int,
+     *   entries: list<array{id: string, label: string, mailer: MailerManager}>
+     * }
+     */
+    private function buildSmtpRouting(array $config, string $campaignId): array
+    {
+        $rotationEnabled = !empty($config['smtp_rotation_enabled']);
+        $mode = (($config['smtp_rotation_mode'] ?? 'sequential') === 'parallel') ? 'parallel' : 'sequential';
+        $every = max(1, (int) ($config['smtp_rotation_every'] ?? 1));
+
+        $ids = [];
+        if ($rotationEnabled && !empty($config['smtp_rotation_ids']) && \is_array($config['smtp_rotation_ids'])) {
+            foreach ($config['smtp_rotation_ids'] as $id) {
+                $sid = trim((string) $id);
+                if ($sid !== '' && !\in_array($sid, $ids, true)) {
+                    $ids[] = $sid;
+                }
+            }
+        }
+        if ($ids === [] && !empty($config['smtp_config_id'])) {
+            $ids[] = trim((string) $config['smtp_config_id']);
+        }
+
+        if ($ids === []) {
+            throw new \RuntimeException('Aucune configuration SMTP sélectionnée.');
+        }
+
+        $smtpConfigManager = new \ChadMailer\Mailer\SMTPConfigManager();
+        $entries = [];
+        foreach ($ids as $id) {
+            $smtpConfig = $smtpConfigManager->loadConfig($id);
+            if (!$smtpConfig) {
+                $this->writeCampaignLog($campaignId, "ERREUR: Configuration SMTP introuvable (ID: {$id})", 'error');
+                continue;
+            }
+            $mailerConfig = [
+                'provider' => $smtpConfig['provider'] ?? 'smtp',
+                'credentials' => $smtpConfig,
+                'from_email' => $config['from_email'] ?? '',
+                'from_name' => $config['from_name'] ?? '',
+            ];
+            $mailer = new \ChadMailer\Mailer\MailerManager($mailerConfig, $this->logger);
+            try {
+                $mailer->testConnection();
+            } catch (\Throwable $e) {
+                $this->writeCampaignLog($campaignId, "ERREUR: SMTP {$id} invalide - " . $e->getMessage(), 'error');
+                continue;
+            }
+            $entries[] = [
+                'id' => $id,
+                'label' => (string) ($smtpConfig['name'] ?? $smtpConfig['host'] ?? $id),
+                'mailer' => $mailer,
+            ];
+        }
+
+        if ($entries === []) {
+            throw new \RuntimeException('Aucune configuration SMTP valide disponible pour cette campagne.');
+        }
+
+        return ['mode' => $mode, 'every' => $every, 'entries' => $entries];
+    }
+
+    private function pickSmtpIndex(int $recipientIndex, int $smtpCount, int $every, string $mode): int
+    {
+        if ($smtpCount <= 1) {
+            return 0;
+        }
+        if ($mode === 'parallel') {
+            return $recipientIndex % $smtpCount;
+        }
+
+        return (int) \floor($recipientIndex / max(1, $every)) % $smtpCount;
     }
 
     /**
@@ -301,49 +384,32 @@ class CampaignManager
         $this->writeCampaignLog($campaignId, $delayMsg);
         error_log("Campaign {$campaignId}: {$delayMsg}", 0);
 
-        // Créer le mailer et tester la connexion SMTP avant de commencer
-        $mailerToUse = $this->mailerManager;
-        $smtpValid = true;
-        $smtpError = null;
-        
-        if (!empty($config['smtp_config_id'])) {
-            $smtpConfigManager = new \ChadMailer\Mailer\SMTPConfigManager();
-            $smtpConfig = $smtpConfigManager->loadConfig($config['smtp_config_id']);
-            if ($smtpConfig) {
-                $mailerConfig = [
-                    'provider' => $smtpConfig['provider'] ?? 'smtp',
-                    'credentials' => $smtpConfig,
-                    'from_email' => $config['from_email'],
-                    'from_name' => $config['from_name'] ?? ''
-                ];
-                $mailerToUse = new \ChadMailer\Mailer\MailerManager($mailerConfig, $this->logger);
-                
-                // Tester la connexion SMTP en essayant d'initialiser le mailer
-                try {
-                    $mailerToUse->testConnection();
-                } catch (\Exception $e) {
-                    $smtpValid = false;
-                    $smtpError = $e->getMessage();
-                    $this->writeCampaignLog($campaignId, "ERREUR: Configuration SMTP invalide - " . $smtpError, 'error');
-                    $this->logger->error("SMTP invalide pour la campagne", [
-                        'campaign' => $campaignId,
-                        'error' => $smtpError
-                    ]);
-                }
-            } else {
-                $smtpValid = false;
-                $smtpError = "Configuration SMTP introuvable";
-                $this->writeCampaignLog($campaignId, "ERREUR: Configuration SMTP introuvable (ID: {$config['smtp_config_id']})", 'error');
-            }
-        }
-
-        // Si le SMTP est invalide, arrêter l'envoi
-        if (!$smtpValid) {
+        // Préparer la/les route(s) SMTP
+        try {
+            $smtpRouting = $this->buildSmtpRouting($config, $campaignId);
+        } catch (\Throwable $e) {
+            $this->writeCampaignLog($campaignId, "ERREUR: " . $e->getMessage(), 'error');
             $campaign['status'] = 'failed';
             $campaign['completed_at'] = date('Y-m-d H:i:s');
             $this->updateCampaign($campaign);
             return;
         }
+        $smtpPool = $smtpRouting['entries'];
+        $smtpMode = $smtpRouting['mode'];
+        $smtpEvery = $smtpRouting['every'];
+        $smtpCount = \count($smtpPool);
+        $smtpLabels = array_map(static fn (array $e): string => $e['label'], $smtpPool);
+        $this->writeCampaignLog(
+            $campaignId,
+            sprintf(
+                'SMTP routing: mode=%s, every=%d, pool=%d (%s)',
+                $smtpMode,
+                $smtpEvery,
+                $smtpCount,
+                implode(', ', $smtpLabels)
+            )
+        );
+        $smtpNextReadyAt = array_fill(0, max(1, $smtpCount), 0.0);
 
         // Déduplication (optionnelle)
         if ($this->shouldDeduplicateRecipients($config)) {
@@ -438,11 +504,20 @@ class CampaignManager
                     $email->getHeaders()->addTextHeader('List-Unsubscribe', '<mailto:unsub@noreply.invalid>');
                 }
 
-                // Envoyer (le mailer a déjà été initialisé et testé plus haut)
-                $mailerToUse->send($email);
+                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
+                $smtpEntry = $smtpPool[$smtpIdx];
+                if ($smtpMode === 'parallel') {
+                    $now = microtime(true);
+                    $wait = $smtpNextReadyAt[$smtpIdx] - $now;
+                    if ($wait > 0) {
+                        usleep((int) round($wait * 1_000_000));
+                    }
+                }
+
+                $smtpEntry['mailer']->send($email);
                 
                 $campaign['stats']['sent']++;
-                $logMsg = "[{$current}/{$total}] ({$progress}%) Email envoyé à: {$recipientEmail}";
+                $logMsg = "[{$current}/{$total}] ({$progress}%) Email envoyé à: {$recipientEmail} via SMTP: {$smtpEntry['label']}";
                 $this->writeCampaignLog($campaignId, $logMsg);
                 $this->logger->info("Email envoyé", [
                     'campaign' => $campaignId,
@@ -455,8 +530,12 @@ class CampaignManager
                     $progressCallback($index + 1, $total, $recipient);
                 }
 
-                // Délai entre les e-mails (secondes fractionnaires possibles)
-                $this->sleepRandomInterEmailDelay($delayMin, $delayMax);
+                if ($smtpMode === 'parallel') {
+                    $smtpNextReadyAt[$smtpIdx] = microtime(true) + $this->computeRandomInterEmailDelaySeconds($delayMin, $delayMax);
+                } else {
+                    // Délai global entre les e-mails (secondes fractionnaires possibles)
+                    $this->sleepRandomInterEmailDelay($delayMin, $delayMax);
+                }
 
             } catch (\Exception $e) {
                 $campaign['stats']['failed']++;
@@ -655,21 +734,12 @@ class CampaignManager
 
         $config = $campaign['config'];
         
-        // Charger le mailer
-        $mailerToUse = $this->mailerManager;
-        if (!empty($config['smtp_config_id'])) {
-            $smtpConfigManager = new \ChadMailer\Mailer\SMTPConfigManager();
-            $smtpConfig = $smtpConfigManager->loadConfig($config['smtp_config_id']);
-            if ($smtpConfig) {
-                $mailerConfig = [
-                    'provider' => $smtpConfig['provider'] ?? 'smtp',
-                    'credentials' => $smtpConfig,
-                    'from_email' => $config['from_email'],
-                    'from_name' => $config['from_name'] ?? ''
-                ];
-                $mailerToUse = new \ChadMailer\Mailer\MailerManager($mailerConfig, $this->logger);
-            }
-        }
+        $smtpRouting = $this->buildSmtpRouting($config, $campaignId);
+        $smtpPool = $smtpRouting['entries'];
+        $smtpMode = $smtpRouting['mode'];
+        $smtpEvery = $smtpRouting['every'];
+        $smtpCount = count($smtpPool);
+        $smtpNextReadyAt = array_fill(0, max(1, $smtpCount), 0.0);
 
         // Charger les templates
         $templates = $this->templateManager->getTemplates($config['template_ids'] ?? []);
@@ -722,20 +792,34 @@ class CampaignManager
                     $email->text($emailContent['text']);
                 }
 
-                $mailerToUse->send($email);
+                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
+                $smtpEntry = $smtpPool[$smtpIdx];
+                if ($smtpMode === 'parallel') {
+                    $now = microtime(true);
+                    $wait = $smtpNextReadyAt[$smtpIdx] - $now;
+                    if ($wait > 0) {
+                        usleep((int) round($wait * 1_000_000));
+                    }
+                }
+
+                $smtpEntry['mailer']->send($email);
                 
                 $retryStats['sent']++;
                 $campaign['stats']['sent']++;
                 $campaign['stats']['failed']--;
                 
-                $logMsg = "[{$current}/{$total}] RELANCE réussie pour: {$recipientEmail}";
+                $logMsg = "[{$current}/{$total}] RELANCE réussie pour: {$recipientEmail} via SMTP: {$smtpEntry['label']}";
                 $this->writeCampaignLog($campaignId, $logMsg);
 
                 if ($progressCallback) {
                     $progressCallback($current, $total, $recipient);
                 }
 
-                $this->sleepRandomInterEmailDelay($delayMin, $delayMax);
+                if ($smtpMode === 'parallel') {
+                    $smtpNextReadyAt[$smtpIdx] = microtime(true) + $this->computeRandomInterEmailDelaySeconds($delayMin, $delayMax);
+                } else {
+                    $this->sleepRandomInterEmailDelay($delayMin, $delayMax);
+                }
 
             } catch (\Exception $e) {
                 $retryStats['failed']++;

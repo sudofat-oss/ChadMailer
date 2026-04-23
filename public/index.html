@@ -253,6 +253,34 @@
                 <select id="smtpConfigSelect"></select>
                 <p class="field-hint">À choisir en premier : l’expéditeur et les options dépendent du fournisseur (Brevo, SES, etc.).</p>
               </div>
+              <div class="form-group">
+                <label class="ty-inline-row" style="gap:8px;align-items:center;">
+                  <input type="checkbox" id="smtpRotationEnabled">
+                  <span>Rotation SMTP (multi-comptes)</span>
+                </label>
+                <p class="field-hint">Activez pour utiliser plusieurs configurations SMTP dans la même campagne.</p>
+              </div>
+              <div class="smtp-rotation-panel hidden" id="smtpRotationPanel">
+                <div class="form-group">
+                  <label>SMTP inclus dans la rotation</label>
+                  <select id="smtpRotationSelect" multiple size="6"></select>
+                  <p class="field-hint">Maintenez Ctrl/Cmd pour sélectionner plusieurs lignes.</p>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Changer de SMTP tous les X e-mails</label>
+                    <input type="number" id="smtpRotationEvery" value="1" min="1" step="1">
+                  </div>
+                  <div class="form-group">
+                    <label>Mode d’envoi</label>
+                    <select id="smtpRotationMode">
+                      <option value="sequential">Un SMTP à la fois (global)</option>
+                      <option value="parallel">Tous les SMTP en parallèle (délai par SMTP)</option>
+                    </select>
+                  </div>
+                </div>
+                <p class="field-hint">En mode parallèle, chaque SMTP applique son propre délai  min/max pendant qu’il traite ses destinataires.</p>
+              </div>
 
               <div class="campaign-smtp-new hidden" id="campaignSmtpNewPanel">
                 <h3 class="campaign-smtp-new-title">Nouveau SMTP</h3>

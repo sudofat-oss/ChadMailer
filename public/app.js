@@ -837,7 +837,9 @@ function initCsvMappingUI() {
 function mergeSafeCampaignConfigForPut() {
   const c = collectCampaignConfig();
   if (!c.file_path) delete c.file_path;
-  if (!c.smtp_config_id) delete c.smtp_config_id;
+  if (!c.smtp_config_id && (!Array.isArray(c.smtp_rotation_ids) || c.smtp_rotation_ids.length === 0)) {
+    delete c.smtp_config_id;
+  }
   return c;
 }
 
@@ -858,7 +860,10 @@ function refreshCampaignSendButtonState() {
   const hasTemplates = countSelectedTemplates() > 0;
   const smtpSel = document.getElementById('smtpConfigSelect');
   const smtpVal = smtpSel && smtpSel.value;
-  const hasSmtp = !!(smtpVal && smtpVal !== '__new__');
+  const rotationEnabled = !!document.getElementById('smtpRotationEnabled')?.checked;
+  const rotSel = document.getElementById('smtpRotationSelect');
+  const selectedRot = rotSel ? Array.from(rotSel.selectedOptions || []).map(o => String(o.value || '')).filter(Boolean) : [];
+  const hasSmtp = rotationEnabled ? selectedRot.length > 0 : !!(smtpVal && smtpVal !== '__new__');
   const csvOk = csvMappingHasRequiredEmail();
   const hasRecipients = (state.uploadedTotal || 0) > 0;
 
@@ -921,6 +926,12 @@ function collectCampaignConfig(extra = {}) {
   const gmailEl = document.getElementById('gmailLastToggle');
   const keepDupEl = document.getElementById('campaignKeepDuplicateEmails');
   const rotationEl = document.getElementById('rotationFrequency');
+  const smtpRotationEnabledEl = document.getElementById('smtpRotationEnabled');
+  const smtpRotationEveryEl = document.getElementById('smtpRotationEvery');
+  const smtpRotationModeEl = document.getElementById('smtpRotationMode');
+  const smtpRotationEnabled = !!(smtpRotationEnabledEl && smtpRotationEnabledEl.checked);
+  const smtpRotationIds = getSelectedSmtpRotationIds();
+  if (smtpRotationEnabled && smtpRotationIds.length === 0 && smtpId) smtpRotationIds.push(smtpId);
   const delayMinEl = document.getElementById('delayMin');
   const delayMaxEl = document.getElementById('delayMax');
   const parseDelaySec = el => {
@@ -951,8 +962,15 @@ function collectCampaignConfig(extra = {}) {
     gmail_last: !!(gmailEl && gmailEl.checked),
     deduplicate_recipients: !(keepDupEl && keepDupEl.checked),
     template_rotation_frequency: Math.max(1, parseInt(rotationEl && rotationEl.value, 10) || 1),
+    smtp_rotation_enabled: smtpRotationEnabled,
+    smtp_rotation_ids: smtpRotationEnabled ? smtpRotationIds : [],
+    smtp_rotation_every: Math.max(1, parseInt(smtpRotationEveryEl && smtpRotationEveryEl.value, 10) || 1),
+    smtp_rotation_mode: (smtpRotationModeEl && smtpRotationModeEl.value === 'parallel') ? 'parallel' : 'sequential',
     ...extra
   };
+  if (smtpRotationEnabled && smtpRotationIds.length > 0 && !smtpId) {
+    base.smtp_config_id = smtpRotationIds[0];
+  }
   const cm = buildColumnMappingFromForm();
   if (state.uploadedFileType === 'csv' && cm && cm.email) {
     base.column_mapping = cm;
@@ -999,6 +1017,56 @@ function smtpLabelForId(id) {
   return c ? (c.name || c.host || c.id) : id;
 }
 
+function getSelectedSmtpRotationIds() {
+  const sel = document.getElementById('smtpRotationSelect');
+  if (!sel) return [];
+  return Array.from(sel.selectedOptions || []).map(o => String(o.value || '')).filter(Boolean);
+}
+
+function setSelectedSmtpRotationIds(ids) {
+  const sel = document.getElementById('smtpRotationSelect');
+  if (!sel) return;
+  const wanted = new Set((ids || []).map(String));
+  Array.from(sel.options || []).forEach(opt => {
+    opt.selected = wanted.has(String(opt.value || ''));
+  });
+}
+
+function syncRotationSelectionWithPrimarySmtp() {
+  if (!document.getElementById('smtpRotationEnabled')?.checked) return;
+  const primary = document.getElementById('smtpConfigSelect')?.value;
+  const ids = getSelectedSmtpRotationIds();
+  if (primary && primary !== '__new__' && ids.length === 0) {
+    setSelectedSmtpRotationIds([primary]);
+  }
+}
+
+function setSmtpRotationUiFromConfig(cfg = {}) {
+  const enabled = !!cfg.smtp_rotation_enabled;
+  const enabledEl = document.getElementById('smtpRotationEnabled');
+  const panel = document.getElementById('smtpRotationPanel');
+  if (enabledEl) enabledEl.checked = enabled;
+  if (panel) panel.classList.toggle('hidden', !enabled);
+  const everyEl = document.getElementById('smtpRotationEvery');
+  if (everyEl) everyEl.value = String(Math.max(1, parseInt(cfg.smtp_rotation_every, 10) || 1));
+  const modeEl = document.getElementById('smtpRotationMode');
+  if (modeEl) modeEl.value = cfg.smtp_rotation_mode === 'parallel' ? 'parallel' : 'sequential';
+  const ids = Array.isArray(cfg.smtp_rotation_ids) ? cfg.smtp_rotation_ids : [];
+  setSelectedSmtpRotationIds(ids.map(String));
+  syncRotationSelectionWithPrimarySmtp();
+}
+
+function formatSmtpRoutingLabel(cfg = {}) {
+  const ids = Array.isArray(cfg.smtp_rotation_ids) ? cfg.smtp_rotation_ids.map(String).filter(Boolean) : [];
+  if (cfg.smtp_rotation_enabled && ids.length > 0) {
+    const labels = ids.map(id => smtpLabelForId(id));
+    const mode = cfg.smtp_rotation_mode === 'parallel' ? 'Parallèle' : 'Séquentiel';
+    const every = Math.max(1, parseInt(cfg.smtp_rotation_every, 10) || 1);
+    return `Rotation ${mode} (x${labels.length}, tous les ${every} e-mail(s)) : ${labels.join(', ')}`;
+  }
+  return smtpLabelForId(cfg.smtp_config_id);
+}
+
 function setCampaignFormEditMode(isEdit) {
   const banner = document.getElementById('campaignEditBanner');
   const title = document.getElementById('campaignFormTitle');
@@ -1038,6 +1106,12 @@ function resetNewCampaignForm() {
   if (rot) rot.value = '1';
   const smtp = document.getElementById('smtpConfigSelect');
   if (smtp) smtp.value = '';
+  setSmtpRotationUiFromConfig({
+    smtp_rotation_enabled: false,
+    smtp_rotation_ids: [],
+    smtp_rotation_every: 1,
+    smtp_rotation_mode: 'sequential'
+  });
   const campPanel = document.getElementById('campaignSmtpNewPanel');
   if (campPanel) campPanel.classList.add('hidden');
   clearCampSmtpForm();
@@ -1178,6 +1252,7 @@ async function openEditCampaign(campaignId) {
   if (keepDupEl) keepDupEl.checked = cfg.deduplicate_recipients === false;
   const rot = document.getElementById('rotationFrequency');
   if (rot) rot.value = String(cfg.template_rotation_frequency || 1);
+  setSmtpRotationUiFromConfig(cfg);
 
   const df = cfg.domain_filters || [];
   const domainInput = document.getElementById('domainFilterInput');
@@ -1188,7 +1263,10 @@ async function openEditCampaign(campaignId) {
   }
 
   await populateTemplateChips();
-  await populateSmtpSelect(cfg.smtp_config_id || null, { preferredFromEmail: cfg.from_email || '' });
+  await populateSmtpSelect(cfg.smtp_config_id || null, {
+    preferredFromEmail: cfg.from_email || '',
+    preferredRotationIds: Array.isArray(cfg.smtp_rotation_ids) ? cfg.smtp_rotation_ids : []
+  });
   document.getElementById('campaignSmtpNewPanel')?.classList.add('hidden');
 
   const templateIds = (cfg.template_ids || []).map(String);
@@ -1360,6 +1438,8 @@ function onCampaignSmtpSelectChange() {
   } else {
     toggleCampaignSmtpNewPanel(false);
   }
+  syncRotationSelectionWithPrimarySmtp();
+  refreshCampaignSendButtonState();
   void refreshCampaignVerifiedSenders({ silent: true });
 }
 
@@ -1460,6 +1540,18 @@ function initCampaignSmtpInline() {
 
   const sel = document.getElementById('smtpConfigSelect');
   if (sel) sel.addEventListener('change', onCampaignSmtpSelectChange);
+  const rotEnabled = document.getElementById('smtpRotationEnabled');
+  const rotPanel = document.getElementById('smtpRotationPanel');
+  if (rotEnabled) {
+    rotEnabled.addEventListener('change', () => {
+      if (rotPanel) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
+      syncRotationSelectionWithPrimarySmtp();
+      refreshCampaignSendButtonState();
+    });
+  }
+  document.getElementById('smtpRotationSelect')?.addEventListener('change', refreshCampaignSendButtonState);
+  document.getElementById('smtpRotationEvery')?.addEventListener('input', refreshCampaignSendButtonState);
+  document.getElementById('smtpRotationMode')?.addEventListener('change', refreshCampaignSendButtonState);
 
   document.getElementById('refreshVerifiedSendersBtn')?.addEventListener('click', () => {
     void refreshCampaignVerifiedSenders({ silent: false });
@@ -1488,6 +1580,7 @@ function initCampaignSmtpInline() {
   document.getElementById('campSmtpTestBtn')?.addEventListener('click', testCampSmtpInline);
   document.getElementById('campSesInspectBtn')?.addEventListener('click', () => runSesInspect('camp'));
   document.getElementById('campSesProbeAllBtn')?.addEventListener('click', () => runSesProbeAllRegions('camp'));
+  if (rotPanel && rotEnabled) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
 }
 
 // ============================================
@@ -3417,6 +3510,7 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   if (!select) return;
 
   const preferredFromEmail = options.preferredFromEmail != null ? options.preferredFromEmail : '';
+  const preferredRotationIds = Array.isArray(options.preferredRotationIds) ? options.preferredRotationIds.map(String) : [];
 
   const keep =
     preferId != null && preferId !== ''
@@ -3437,6 +3531,15 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   ];
   select.innerHTML = opts.join('');
 
+  const rotSelect = document.getElementById('smtpRotationSelect');
+  if (rotSelect) {
+    rotSelect.innerHTML = state.smtpConfigs.map(s => {
+      const id = String(s.id).replace(/"/g, '&quot;');
+      return `<option value="${id}">${escHtml(s.name || s.host || 'Config ' + s.id)}</option>`;
+    }).join('');
+    if (preferredRotationIds.length > 0) setSelectedSmtpRotationIds(preferredRotationIds);
+  }
+
   const optValues = [...select.options].map(o => o.value);
   if (keep && optValues.includes(keep)) {
     select.value = keep;
@@ -3446,6 +3549,8 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   } else {
     toggleCampaignSmtpNewPanel(false);
   }
+
+  syncRotationSelectionWithPrimarySmtp();
 
   await refreshCampaignVerifiedSenders({ silent: true, preferredEmail: preferredFromEmail });
 }
@@ -3548,7 +3653,11 @@ async function handleAnalyze() {
 function validateCampaignBeforeSend(force = false) {
   const config = collectCampaignConfig({ force_send: force });
   if (config.template_ids.length === 0) return 'Sélectionnez au moins un template.';
-  if (!config.smtp_config_id) {
+  if (config.smtp_rotation_enabled) {
+    if (!Array.isArray(config.smtp_rotation_ids) || config.smtp_rotation_ids.length === 0) {
+      return 'Sélectionnez au moins un SMTP pour la rotation.';
+    }
+  } else if (!config.smtp_config_id) {
     const sel = document.getElementById('smtpConfigSelect');
     if (sel && sel.value === '__new__') {
       return 'Enregistrez d’abord le nouveau SMTP (« Enregistrer & utiliser pour cette campagne »), ou sélectionnez une configuration existante.';
@@ -3572,6 +3681,21 @@ function formatEtaSeconds(sec) {
   const h = Math.floor(sec / 3600);
   const m = Math.ceil((sec % 3600) / 60);
   return `≈ ${h} h ${m} min`;
+}
+
+function estimateEtaSeconds(totalOrRemaining, cfg = {}) {
+  const count = Math.max(0, Number(totalOrRemaining) || 0);
+  const dmin = Math.max(0, parseFloat(String(cfg.delay_min ?? 1).replace(',', '.')) || 0);
+  const dmax = Math.max(dmin, parseFloat(String(cfg.delay_max ?? dmin).replace(',', '.')) || dmin);
+  const mode = cfg.smtp_rotation_mode === 'parallel' ? 'parallel' : 'sequential';
+  const smtpCount = cfg.smtp_rotation_enabled && Array.isArray(cfg.smtp_rotation_ids)
+    ? Math.max(1, cfg.smtp_rotation_ids.filter(Boolean).length)
+    : 1;
+  if (mode !== 'parallel' || smtpCount <= 1) {
+    return { low: count * dmin, high: count * dmax };
+  }
+  const perLane = Math.ceil(count / smtpCount);
+  return { low: perLane * dmin, high: perLane * dmax };
 }
 
 function stopCampaignCompletionWatch() {
@@ -3638,8 +3762,9 @@ async function openSendSummaryModal(forceSend = false) {
   const delayMin = config.delay_min ?? 1;
   const delayMax = config.delay_max ?? 3;
   const avgDelay = (delayMin + delayMax) / 2;
-  const etaLow = total * delayMin;
-  const etaHigh = total * delayMax;
+  const eta = estimateEtaSeconds(total, config);
+  const etaLow = eta.low;
+  const etaHigh = eta.high;
 
   const scoreBlock =
     state.scoreData && typeof state.scoreData.score === 'number'
@@ -3668,8 +3793,8 @@ async function openSendSummaryModal(forceSend = false) {
         <li><span>Destinataires (fichier)</span><strong>${total.toLocaleString('fr-FR')}</strong></li>
         <li><span>Templates</span><strong>${templateNames.length ? escHtml(templateNames.join(', ')) : '—'}</strong></li>
         <li><span>Expéditeur</span><strong>${escHtml(config.from_name ? `${config.from_name} <${config.from_email}>` : config.from_email || '—')}</strong></li>
-        <li><span>SMTP</span><strong>${escHtml(smtpLabelForId(config.smtp_config_id))}</strong></li>
-        <li><span>Délai entre e-mails</span><strong>${delayMin}–${delayMax} s (moy. ${avgDelay.toFixed(1)} s)</strong></li>
+        <li><span>SMTP</span><strong>${escHtml(formatSmtpRoutingLabel(config))}</strong></li>
+        <li><span>Délai entre e-mails</span><strong>${delayMin}–${delayMax} s (moy. ${avgDelay.toFixed(1)} s${config.smtp_rotation_enabled && config.smtp_rotation_mode === 'parallel' ? ', par SMTP' : ''})</strong></li>
         <li><span>Durée estimée (ordre de grandeur)</span><strong>${formatEtaSeconds(etaLow)} — ${formatEtaSeconds(etaHigh)}</strong></li>
         <li><span>Rotation templates</span><strong>tous les ${config.template_rotation_frequency || 1} e-mail(s)</strong></li>
         <li><span>Fichier liste</span><strong>${escHtml((config.file_path || '').split('/').pop() || '—')}</strong></li>
@@ -3791,7 +3916,7 @@ async function showCampaignDetail(campaignId) {
       : escHtml(cfg.from_email || '—');
     metaBar.innerHTML = `
       <span><strong>De :</strong> ${fromLine}</span>
-      <span><strong>SMTP :</strong> ${escHtml(smtpLabelForId(cfg.smtp_config_id))}</span>
+      <span><strong>SMTP :</strong> ${escHtml(formatSmtpRoutingLabel(cfg))}</span>
       <span><strong>Liste :</strong> ${escHtml((cfg.file_path || '').split('/').pop() || '—')}</span>
     `;
     metaBar.classList.remove('hidden');
@@ -3968,10 +4093,8 @@ function updateDetailStatsFromServer(stats, status) {
   if (etaEl) {
     if (status === 'running' && remaining > 0 && state.configCacheForDetailEta) {
       const cfg = state.configCacheForDetailEta;
-      const dmin = Math.max(0, parseFloat(String(cfg.delay_min ?? 1).replace(',', '.')) || 0);
-      const dmax = Math.max(dmin, parseFloat(String(cfg.delay_max ?? dmin).replace(',', '.')) || dmin);
-      const avg = (dmin + dmax) / 2;
-      etaEl.textContent = formatEtaSeconds(remaining * avg);
+      const eta = estimateEtaSeconds(remaining, cfg);
+      etaEl.textContent = formatEtaSeconds((eta.low + eta.high) / 2);
     } else {
       etaEl.textContent = '—';
     }
