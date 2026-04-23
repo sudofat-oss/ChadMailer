@@ -248,7 +248,7 @@
               <span class="accordion-chevron" data-ty-icon="chevron-right" data-ty-icon-size="18"></span>
             </div>
             <div class="accordion-body hidden">
-              <div class="form-group">
+              <div class="form-group" id="smtpPrimaryConfigGroup">
                 <label>Configuration SMTP</label>
                 <select id="smtpConfigSelect"></select>
                 <p class="field-hint">À choisir en premier : l’expéditeur et les options dépendent du fournisseur (Brevo, SES, etc.).</p>
@@ -263,8 +263,8 @@
               <div class="smtp-rotation-panel hidden" id="smtpRotationPanel">
                 <div class="form-group">
                   <label>SMTP inclus dans la rotation</label>
-                  <select id="smtpRotationSelect" multiple size="6"></select>
-                  <p class="field-hint">Maintenez Ctrl/Cmd pour sélectionner plusieurs lignes.</p>
+                  <div id="smtpRotationSelect" class="smtp-rotation-checklist"></div>
+                  <p class="field-hint">Cochez tous les SMTP à utiliser dans la rotation.</p>
                 </div>
                 <div class="form-row">
                   <div class="form-group">

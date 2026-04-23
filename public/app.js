@@ -1018,25 +1018,55 @@ function smtpLabelForId(id) {
 }
 
 function getSelectedSmtpRotationIds() {
-  const sel = document.getElementById('smtpRotationSelect');
-  if (!sel) return [];
-  return Array.from(sel.selectedOptions || []).map(o => String(o.value || '')).filter(Boolean);
+  const wrap = document.getElementById('smtpRotationSelect');
+  if (!wrap) return [];
+  return Array.from(wrap.querySelectorAll('input[type="checkbox"][data-smtp-id]:checked'))
+    .map(el => String(el.getAttribute('data-smtp-id') || ''))
+    .filter(Boolean);
 }
 
 function setSelectedSmtpRotationIds(ids) {
-  const sel = document.getElementById('smtpRotationSelect');
-  if (!sel) return;
   const wanted = new Set((ids || []).map(String));
-  Array.from(sel.options || []).forEach(opt => {
-    opt.selected = wanted.has(String(opt.value || ''));
+  const wrap = document.getElementById('smtpRotationSelect');
+  if (!wrap) return;
+  Array.from(wrap.querySelectorAll('input[type="checkbox"][data-smtp-id]')).forEach(cb => {
+    cb.checked = wanted.has(String(cb.getAttribute('data-smtp-id') || ''));
   });
 }
 
+function renderSmtpRotationChecklist(preferredIds = []) {
+  const wrap = document.getElementById('smtpRotationSelect');
+  if (!wrap) return;
+  const preferred = new Set((preferredIds || []).map(String));
+  wrap.innerHTML = (state.smtpConfigs || []).map(s => {
+    const id = String(s.id || '');
+    const label = escHtml(s.name || s.host || ('Config ' + id));
+    const checked = preferred.has(id) ? ' checked' : '';
+    return `
+      <label class="smtp-rotation-check-item">
+        <input type="checkbox" data-smtp-id="${escAttr(id)}"${checked}>
+        <span class="smtp-rotation-check-label">${label}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function updateSmtpSelectionUiMode() {
+  const enabled = !!document.getElementById('smtpRotationEnabled')?.checked;
+  const primaryGroup = document.getElementById('smtpPrimaryConfigGroup');
+  if (primaryGroup) primaryGroup.classList.toggle('hidden', enabled);
+}
+
 function syncRotationSelectionWithPrimarySmtp() {
-  if (!document.getElementById('smtpRotationEnabled')?.checked) return;
+  const enabled = !!document.getElementById('smtpRotationEnabled')?.checked;
+  if (!enabled) return;
   const primary = document.getElementById('smtpConfigSelect')?.value;
   const ids = getSelectedSmtpRotationIds();
-  if (primary && primary !== '__new__' && ids.length === 0) {
+  if (ids.length > 0) {
+    const sel = document.getElementById('smtpConfigSelect');
+    if (sel && ids[0] !== '__new__') sel.value = ids[0];
+    toggleCampaignSmtpNewPanel(false);
+  } else if (primary && primary !== '__new__') {
     setSelectedSmtpRotationIds([primary]);
   }
 }
@@ -1047,6 +1077,7 @@ function setSmtpRotationUiFromConfig(cfg = {}) {
   const panel = document.getElementById('smtpRotationPanel');
   if (enabledEl) enabledEl.checked = enabled;
   if (panel) panel.classList.toggle('hidden', !enabled);
+  updateSmtpSelectionUiMode();
   const everyEl = document.getElementById('smtpRotationEvery');
   if (everyEl) everyEl.value = String(Math.max(1, parseInt(cfg.smtp_rotation_every, 10) || 1));
   const modeEl = document.getElementById('smtpRotationMode');
@@ -1433,6 +1464,9 @@ function toggleCampaignSmtpNewPanel(show) {
 function onCampaignSmtpSelectChange() {
   const sel = document.getElementById('smtpConfigSelect');
   if (!sel) return;
+  if (document.getElementById('smtpRotationEnabled')?.checked && sel.value && sel.value !== '__new__') {
+    setSelectedSmtpRotationIds([sel.value, ...getSelectedSmtpRotationIds()]);
+  }
   if (sel.value === '__new__') {
     toggleCampaignSmtpNewPanel(true);
   } else {
@@ -1545,11 +1579,17 @@ function initCampaignSmtpInline() {
   if (rotEnabled) {
     rotEnabled.addEventListener('change', () => {
       if (rotPanel) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
+      updateSmtpSelectionUiMode();
       syncRotationSelectionWithPrimarySmtp();
+      void refreshCampaignVerifiedSenders({ silent: true });
       refreshCampaignSendButtonState();
     });
   }
-  document.getElementById('smtpRotationSelect')?.addEventListener('change', refreshCampaignSendButtonState);
+  document.getElementById('smtpRotationSelect')?.addEventListener('change', () => {
+    syncRotationSelectionWithPrimarySmtp();
+    void refreshCampaignVerifiedSenders({ silent: true });
+    refreshCampaignSendButtonState();
+  });
   document.getElementById('smtpRotationEvery')?.addEventListener('input', refreshCampaignSendButtonState);
   document.getElementById('smtpRotationMode')?.addEventListener('change', refreshCampaignSendButtonState);
 
@@ -1581,6 +1621,7 @@ function initCampaignSmtpInline() {
   document.getElementById('campSesInspectBtn')?.addEventListener('click', () => runSesInspect('camp'));
   document.getElementById('campSesProbeAllBtn')?.addEventListener('click', () => runSesProbeAllRegions('camp'));
   if (rotPanel && rotEnabled) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
+  updateSmtpSelectionUiMode();
 }
 
 // ============================================
@@ -3533,11 +3574,7 @@ async function populateSmtpSelect(preferId = null, options = {}) {
 
   const rotSelect = document.getElementById('smtpRotationSelect');
   if (rotSelect) {
-    rotSelect.innerHTML = state.smtpConfigs.map(s => {
-      const id = String(s.id).replace(/"/g, '&quot;');
-      return `<option value="${id}">${escHtml(s.name || s.host || 'Config ' + s.id)}</option>`;
-    }).join('');
-    if (preferredRotationIds.length > 0) setSelectedSmtpRotationIds(preferredRotationIds);
+    renderSmtpRotationChecklist(preferredRotationIds);
   }
 
   const optValues = [...select.options].map(o => o.value);
