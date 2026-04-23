@@ -1406,7 +1406,7 @@ function renderSmtpSenderOverridesList(preferredMap = null) {
         <div class="smtp-sender-override-head">
           <span class="smtp-sender-override-title">${label}</span>
           <div class="smtp-sender-override-toggles">
-            <label class="smtp-sender-override-toggle">
+            <label class="smtp-sender-override-toggle" data-smtp-use-default-from-toggle>
               <input type="checkbox" data-smtp-use-default-from${useDefaultFrom ? ' checked' : ''}${senderMode !== 'per_smtp' ? ' disabled' : ''}>
               <span>Use default From email</span>
             </label>
@@ -1417,11 +1417,11 @@ function renderSmtpSenderOverridesList(preferredMap = null) {
           </div>
         </div>
         <div class="form-row">
-          <div class="form-group">
+          <div class="form-group${senderMode !== 'per_smtp' ? ' hidden' : ''}" data-smtp-from-email-group>
             <label>From email override</label>
             <input type="email" data-smtp-from-email placeholder="sender@domain.com" value="${fromEmail}"${emailInputDisabled}>
           </div>
-          <div class="form-group">
+          <div class="form-group${nameMode !== 'per_smtp' ? ' hidden' : ''}" data-smtp-from-name-group>
             <label>From name override</label>
             <input type="text" data-smtp-from-name placeholder="Optional" value="${fromName}"${nameInputDisabled}>
           </div>
@@ -1441,10 +1441,16 @@ function syncSmtpSenderOverridesDisabledState() {
     const useGlobalNameEl = item.querySelector('input[data-smtp-use-global-name]');
     const fromEmailEl = item.querySelector('input[data-smtp-from-email]');
     const fromNameEl = item.querySelector('input[data-smtp-from-name]');
+    const useDefaultFromToggle = item.querySelector('[data-smtp-use-default-from-toggle]');
+    const fromEmailGroupEl = item.querySelector('[data-smtp-from-email-group]');
+    const fromNameGroupEl = item.querySelector('[data-smtp-from-name-group]');
     if (useDefaultFromEl) useDefaultFromEl.disabled = senderMode !== 'per_smtp';
     if (useGlobalNameEl) useGlobalNameEl.disabled = nameMode !== 'per_smtp';
     if (fromEmailEl) fromEmailEl.disabled = senderMode !== 'per_smtp' || !!useDefaultFromEl?.checked;
     if (fromNameEl) fromNameEl.disabled = nameMode !== 'per_smtp' || !!useGlobalNameEl?.checked;
+    if (useDefaultFromToggle) useDefaultFromToggle.classList.toggle('hidden', senderMode !== 'per_smtp');
+    if (fromEmailGroupEl) fromEmailGroupEl.classList.toggle('hidden', senderMode !== 'per_smtp');
+    if (fromNameGroupEl) fromNameGroupEl.classList.toggle('hidden', nameMode !== 'per_smtp');
   });
 }
 
