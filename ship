@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+rand_token() {
+  tr -dc 'a-z0-9' </dev/urandom | head -c 6
+}
+
+infer_repo_slug() {
+  local remote_url
+  remote_url="$(git remote get-url origin)"
+  if [[ "$remote_url" =~ github\.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  # SSH aliases like git@github-chadmailer-sudofat:owner/repo.git
+  if [[ "$remote_url" =~ ^git@[^:]+:([^/]+/[^/.]+)(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+main() {
+  local msg tag branch phar_file repo_slug
+  msg="${1:-random-$(date +%Y%m%d-%H%M%S)-$(rand_token)}"
+  tag="${2:-v$(date +%Y.%m.%d-%H%M%S)}"
+  phar_file="chadmailer.phar"
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  if ! repo_slug="$(infer_repo_slug)"; then
+    echo "Impossible de déterminer le repo GitHub depuis origin."
+    echo "Vérifie 'git remote get-url origin'."
+    exit 1
+  fi
+
+  echo "==> Repo: $repo_slug"
+  echo "==> Branch: $branch"
+  echo "==> Commit message: $msg"
+  echo "==> Release tag: $tag"
+
+  git add .
+  if git diff --cached --quiet; then
+    echo "Aucun changement à commit."
+  else
+    git commit -m "$msg"
+  fi
+  git push origin "$branch"
+
+  echo "==> Build PHAR..."
+  php -d phar.readonly=0 build.php
+  if [[ ! -s "$phar_file" ]]; then
+    echo "PHAR introuvable ou vide: $phar_file"
+    exit 1
+  fi
+
+  if git rev-parse "$tag" >/dev/null 2>&1; then
+    echo "Tag local déjà existant: $tag"
+    exit 1
+  fi
+
+  echo "==> Create/push tag..."
+  git tag "$tag"
+  git push origin "$tag"
+
+  echo "==> Publish release..."
+  if gh release view "$tag" -R "$repo_slug" >/dev/null 2>&1; then
+    gh release upload "$tag" "$phar_file" --clobber -R "$repo_slug"
+  else
+    gh release create "$tag" "$phar_file" \
+      --title "$tag" \
+      --notes "Automated release from ./ship" \
+      -R "$repo_slug"
+  fi
+
+  echo ""
+  echo "OK: code push + PHAR build + release upload terminés."
+  echo "Release: https://github.com/$repo_slug/releases/tag/$tag"
+}
+
+main "$@"

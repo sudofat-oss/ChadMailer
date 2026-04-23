@@ -12,4 +12,4 @@ __pycache__/
 !/storage/.gitkeep
 /campaigns/*
 !/campaigns/.gitkeep
-
+.chadmailer/

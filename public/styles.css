@@ -1554,8 +1554,58 @@ button:disabled {
   background: rgba(15, 23, 42, 0.2);
 }
 
+.smtp-rotation-toggle-group {
+  margin-top: 4px;
+}
+
+.smtp-rotation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  user-select: none;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.35);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.smtp-rotation-toggle:hover {
+  border-color: rgba(124, 58, 237, 0.55);
+  background: rgba(124, 58, 237, 0.14);
+}
+
+.smtp-rotation-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.smtp-rotation-toggle-text {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
 .smtp-rotation-panel select[multiple] {
-  min-height: 120px;
+  min-height: 136px;
+  padding: 8px;
+  background-image: none;
+  appearance: auto;
+  padding-right: 8px;
+}
+
+.smtp-rotation-panel select[multiple] option {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.smtp-rotation-panel select[multiple] option:checked {
+  background: linear-gradient(90deg, rgba(124, 58, 237, 0.35), rgba(124, 58, 237, 0.2));
+  color: var(--text-primary);
 }
 
 .form-title {
