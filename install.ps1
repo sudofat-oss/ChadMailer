@@ -58,7 +58,7 @@ function Install-PhpIfNeeded {
     Write-Info "Tentative d'installation de PHP via Chocolatey..."
     & choco install php -y | Out-Null
   } else {
-    Fail "Impossible d'installer PHP automatiquement (winget/choco non disponibles). Installez PHP >= $MinPhpVersion: https://windows.php.net/download/"
+    Fail "Impossible d'installer PHP automatiquement (winget/choco non disponibles). Installez PHP >= ${MinPhpVersion}: https://windows.php.net/download/"
   }
 
   # Rafraîchit le PATH de la session avec la valeur machine + utilisateur.
