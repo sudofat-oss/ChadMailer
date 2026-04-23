@@ -114,6 +114,26 @@ function spawnCampaignWorker(string $phpBin, string $cliPath, string $campaignId
     return $exitCode === 0;
 }
 
+/**
+ * Résout la cible à exécuter pour le worker:
+ * - si l'app tourne en PHAR: exécuter le PHAR lui-même
+ * - sinon: exécuter cli.php du projet
+ */
+function resolveWorkerEntrypoint(): ?string {
+    $runningPhar = \Phar::running(false);
+    if (\is_string($runningPhar) && $runningPhar !== '') {
+        return $runningPhar;
+    }
+
+    $cliPath = __DIR__ . '/../cli.php';
+    if (is_file($cliPath)) {
+        $resolved = realpath($cliPath);
+        return $resolved !== false ? $resolved : $cliPath;
+    }
+
+    return null;
+}
+
 try {
     // Initialisation
     $configManager = new ConfigManager();
@@ -410,11 +430,11 @@ try {
                     }
                 }
                 $phpBin = PHP_BINARY;
-                $cliPath = realpath(__DIR__ . '/../cli.php');
-                if (!$cliPath) {
-                    jsonError('Impossible de localiser cli.php', 500);
+                $entrypoint = resolveWorkerEntrypoint();
+                if ($entrypoint === null || $entrypoint === '') {
+                    jsonError('Impossible de localiser le worker (cli.php/PHAR).', 500);
                 }
-                $spawned = spawnCampaignWorker($phpBin, $cliPath, $campaignId);
+                $spawned = spawnCampaignWorker($phpBin, $entrypoint, $campaignId);
                 if (!$spawned) {
                     jsonError('Impossible de démarrer le worker en arrière-plan.', 500);
                 }
