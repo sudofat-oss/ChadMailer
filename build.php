@@ -43,6 +43,7 @@ putenv('CHADMAILER_PHAR_PATH=' . $pharPath);
 // Créer un répertoire temporaire pour extraire les fichiers
 $tmpDir = sys_get_temp_dir() . '/chadmailer_' . uniqid();
 mkdir($tmpDir, 0755, true);
+putenv('CHADMAILER_TMP_DIR=' . $tmpDir);
 $publicDir = $tmpDir . '/public';
 mkdir($publicDir, 0755, true);
 
@@ -141,6 +142,17 @@ foreach ($workDirs as $dir) {
     if (!is_dir($workDir)) {
         mkdir($workDir, 0755, true);
     }
+}
+
+// Mode CLI worker: php chadmailer.phar send <campaignId>
+if (isset($argv[1]) && $argv[1] === 'send') {
+    $cliEntrypoint = $tmpDir . '/cli.php';
+    if (!file_exists($cliEntrypoint)) {
+        fwrite(STDERR, "Erreur: cli.php introuvable dans l'environnement temporaire.\n");
+        exit(1);
+    }
+    require $cliEntrypoint;
+    exit;
 }
 
 // Modifier index.php pour utiliser le vendor extrait

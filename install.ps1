@@ -96,17 +96,14 @@ param(
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServerScript = Join-Path $ScriptDir "chadmailer.ps1"
 
-# Start the web server in a separate window so this script can open the browser.
-Start-Process powershell -ArgumentList @(
+# Open browser shortly after startup (in background), then keep this console alive with server logs.
+Start-Process powershell -WindowStyle Hidden -ArgumentList @(
   "-NoProfile",
   "-ExecutionPolicy", "Bypass",
-  "-File", "`"$ServerScript`"",
-  $Port,
-  $Host
-)
+  "-Command", "Start-Sleep -Seconds 2; Start-Process 'http://$Host`:$Port/index.html'"
+) | Out-Null
 
-Start-Sleep -Seconds 2
-Start-Process "http://$Host`:$Port/index.html"
+& $ServerScript $Port $Host
 '@
   Set-Content -Path $WebLauncherPath -Value $webContent -Encoding UTF8
 }
@@ -123,7 +120,7 @@ function Write-DesktopShortcut {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = "powershell.exe"
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$WebLauncherPath`""
+    $shortcut.Arguments = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$WebLauncherPath`""
     $shortcut.WorkingDirectory = $InstallDir
     $shortcut.Description = "Launch ChadMailer web app"
     $shortcut.IconLocation = "powershell.exe,0"
