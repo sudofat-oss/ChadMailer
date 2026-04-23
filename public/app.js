@@ -4798,6 +4798,7 @@ async function refreshTestingMailFromIdentities() {
   const hintEl = document.getElementById('testingMailFromIdentityHint');
   const hintNo = document.getElementById('testingMailFromNoConfigHint');
   const fs = document.getElementById('testingMailFromSelect');
+  const fromInput = document.getElementById('testingMailFrom');
   const id = selSmtp?.value?.trim();
   if (!id) {
     if (wrapSel) wrapSel.classList.add('hidden');
@@ -4819,8 +4820,24 @@ async function refreshTestingMailFromIdentities() {
   if (!TESTING_IDENTITY_SELECT_PROVIDERS.has(p)) {
     if (wrapSel) wrapSel.classList.add('hidden');
     if (wrapInp) wrapInp.classList.remove('hidden');
+    const smtpUsername = String(cfg?.username || '').trim();
+    const shouldAutofillFrom = (p === 'smtp' || p === 'office365') && smtpUsername !== '';
+    const previousAuto = String(fromInput?.dataset?.autoFromValue || '').trim();
+    const currentFrom = String(fromInput?.value || '').trim();
+    if (fromInput) {
+      if (shouldAutofillFrom) {
+        if (currentFrom === '' || currentFrom === previousAuto) {
+          fromInput.value = smtpUsername;
+        }
+        fromInput.dataset.autoFromValue = smtpUsername;
+      } else if (fromInput.dataset.autoFromValue) {
+        delete fromInput.dataset.autoFromValue;
+      }
+    }
     if (hintEl) {
-      hintEl.textContent = 'Fournisseur générique : saisie manuelle de l’adresse From.';
+      hintEl.textContent = shouldAutofillFrom
+        ? 'Adresse From préremplie depuis le username SMTP (modifiable).'
+        : 'Fournisseur générique : saisie manuelle de l’adresse From.';
       hintEl.classList.remove('hidden');
     }
     if (fs) fs.innerHTML = '<option value="">—</option>';

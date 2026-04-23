@@ -1322,7 +1322,14 @@ try {
                         break;
                     }
                     
-                    $fromEmail = !empty($data['from_email']) ? $data['from_email'] : 'test@example.com';
+                    $fromEmail = trim((string) ($data['from_email'] ?? ''));
+                    $provider = strtolower((string) ($smtpConfig['provider'] ?? 'smtp'));
+                    if ($fromEmail === '' && ($provider === 'smtp' || $provider === 'office365')) {
+                        $fromEmail = trim((string) ($smtpConfig['username'] ?? ''));
+                    }
+                    if ($fromEmail === '') {
+                        $fromEmail = 'test@example.com';
+                    }
                     $fromName = $data['from_name'] ?? '';
                     $toEmail = $data['to'] ?? '';
                     
