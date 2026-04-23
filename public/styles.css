@@ -1632,6 +1632,60 @@ button:disabled {
   font-weight: 500;
 }
 
+.smtp-sender-routing-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.smtp-sender-overrides-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.smtp-sender-override-item {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(30, 41, 59, 0.3);
+}
+
+.smtp-sender-override-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.smtp-sender-override-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.smtp-sender-override-toggles {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smtp-sender-override-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.smtp-sender-override-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
 .form-title {
   font-size: 1.5rem;
   font-weight: 700;

@@ -248,7 +248,7 @@ try {
             } elseif ($method === 'POST') {
                 $input = file_get_contents('php://input');
                 if ($input === false || $input === '') {
-                    jsonError('Aucune donnée reçue', 400);
+                    jsonError('No data received', 400);
                 }
                 
                 $data = json_decode($input, true);
@@ -259,7 +259,7 @@ try {
                         'input_length' => strlen($input),
                         'input_preview' => substr($input, 0, 200)
                     ]);
-                    jsonError('Données JSON invalides: ' . json_last_error_msg(), 400);
+                    jsonError('Invalid JSON data: ' . json_last_error_msg(), 400);
                 }
                 
                 if (empty($data['name']) || empty($data['subject'])) {
@@ -276,14 +276,14 @@ try {
                         'error' => $e->getMessage(),
                         'trace' => $e->getTraceAsString()
                     ]);
-                    jsonError('Erreur lors de la sauvegarde: ' . $e->getMessage(), 500);
+                    jsonError('Error while saving: ' . $e->getMessage(), 500);
                 } catch (\Exception $e) {
                     $logger->error("Erreur inattendue sauvegarde template", [
                         'error' => $e->getMessage(),
                         'class' => get_class($e),
                         'trace' => $e->getTraceAsString()
                     ]);
-                    jsonError('Erreur inattendue: ' . $e->getMessage(), 500);
+                    jsonError('Unexpected error: ' . $e->getMessage(), 500);
                 }
             }
             break;
@@ -309,7 +309,7 @@ try {
             } elseif ($method === 'POST') {
                 $data = json_decode(file_get_contents('php://input'), true);
                 if (!\is_array($data)) {
-                    jsonError('Données invalides.', 400);
+                    jsonError('Invalid data.', 400);
                     break;
                 }
                 try {
@@ -318,7 +318,7 @@ try {
                 } catch (\InvalidArgumentException $e) {
                     jsonError($e->getMessage(), 400);
                 } catch (\Exception $e) {
-                    jsonError('Erreur sauvegarde dossier : ' . $e->getMessage(), 500);
+                    jsonError('Folder save error: ' . $e->getMessage(), 500);
                 }
             }
             break;
@@ -348,7 +348,7 @@ try {
                 }
                 $ok = $templateManager->moveTemplateToFolder((string) $data['template_id'], $folderId === null ? null : (string) $folderId);
                 if (!$ok) {
-                    jsonError('Impossible de déplacer le template (introuvable ou dossier absent).', 400);
+                    jsonError('Unable to move template (not found or missing folder).', 400);
                     break;
                 }
                 jsonSuccess(['moved' => true]);
@@ -368,7 +368,7 @@ try {
                 }
                 $ok = $templateManager->moveFolderToFolder((string) $data['folder_id'], $parentId === null ? null : (string) $parentId);
                 if (!$ok) {
-                    jsonError('Impossible de déplacer le dossier (introuvable, cycle, ou parent absent).', 400);
+                    jsonError('Unable to move folder (not found, cycle, or missing parent).', 400);
                     break;
                 }
                 jsonSuccess(['moved' => true]);
@@ -428,14 +428,14 @@ try {
                 if ($result) {
                     jsonSuccess(['deleted' => true]);
                 } else {
-                    jsonError('Campagne non trouvée ou impossible à supprimer', 404);
+                    jsonError('Campaign not found or cannot be deleted', 404);
                 }
             } elseif ($method === 'PUT') {
                 $id = $_GET['id'] ?? '';
                 $data = json_decode(file_get_contents('php://input'), true);
                 $campaign = $campaignManager->loadCampaign($id);
                 if (!$campaign) {
-                    jsonError('Campagne non trouvée', 404);
+                    jsonError('Campaign not found', 404);
                 }
                 
                 // Mettre à jour la campagne
@@ -485,18 +485,18 @@ try {
                     if ($startedAt && (time() - $startedAt) > 3600) {
                         $campaignManager->markInterrupted($campaignId);
                     } else {
-                        jsonError('Cette campagne est déjà en cours d\'envoi.', 409);
+                        jsonError('This campaign is already sending.', 409);
                     }
                 }
                 $phpBin = PHP_BINARY;
                 $entrypoint = resolveWorkerEntrypoint();
                 if ($entrypoint === null || $entrypoint === '') {
                     $logger->error('worker_resolution_failed', workerResolutionDiagnostics());
-                    jsonError('Impossible de localiser le worker (cli.php/PHAR).', 500);
+                    jsonError('Unable to locate worker (cli.php/PHAR).', 500);
                 }
                 $spawned = spawnCampaignWorker($phpBin, $entrypoint, $campaignId);
                 if (!$spawned) {
-                    jsonError('Impossible de démarrer le worker en arrière-plan.', 500);
+                    jsonError('Unable to start background worker.', 500);
                 }
                 jsonSuccess(['status' => 'started', 'campaign_id' => $campaignId]);
             }
@@ -533,7 +533,7 @@ try {
                 $campaignConfig = $data['campaign'] ?? [];
                 if (empty($templateIds)) { jsonError('template_ids requis', 400); }
                 $templates = $templateManager->getTemplates($templateIds);
-                if (empty($templates)) { jsonError('Templates introuvables', 404); }
+                if (empty($templates)) { jsonError('Templates not found', 404); }
                 $template = $templateManager->ensurePlainText($templates[0]);
                 $scorer = new CampaignScorer();
                 $result = $scorer->score($campaignConfig, $template);
@@ -560,7 +560,7 @@ try {
                 $fileType = $data['file_type'] ?? 'txt';
                 $columnMapping = $data['column_mapping'] ?? null;
                 if (empty($filePath) || !file_exists($filePath)) {
-                    jsonError('Fichier introuvable', 404);
+                    jsonError('File not found', 404);
                 }
                 $recipients = $recipientParser->parse($filePath, $fileType, $columnMapping);
                 $domains = $recipientParser->groupByDomain($recipients);
@@ -606,7 +606,7 @@ try {
                     if ($campaignId !== '') {
                         $camp = $campaignManager->loadCampaign($campaignId);
                         if (!$camp) {
-                            jsonError('Campagne introuvable', 404);
+                            jsonError('Campaign not found', 404);
                             break;
                         }
                         $recipients = $campaignManager->buildRecipientListForPreview($camp['config']);
@@ -615,7 +615,7 @@ try {
                     } else {
                         $manual = $data['manual_recipient'] ?? null;
                         if (!\is_array($manual) || empty($manual['email'])) {
-                            jsonError('Indiquez une campagne, une liste importée (brouillon) ou manual_recipient.email', 400);
+                            jsonError('Provide a campaign, an imported list (draft), or manual_recipient.email', 400);
                             break;
                         }
                         $recipient = $manual;
@@ -627,7 +627,7 @@ try {
 
                 if ($recipient === null) {
                     if ($recipients === []) {
-                        jsonError('Aucun destinataire (après dédup / filtres).', 400);
+                        jsonError('No recipients (after dedupe / filters).', 400);
                         break;
                     }
                     if ($emailIndex >= \count($recipients)) {
@@ -663,7 +663,7 @@ try {
                     $campaignManager->retryFailedRecipients($campaignId, function($current, $total, $recipient) {
                         // Callback de progression
                     });
-                    jsonSuccess(['message' => 'Relance des emails en échec lancée']);
+                    jsonSuccess(['message' => 'Retry for failed emails started']);
                 } catch (\Exception $e) {
                     jsonError($e->getMessage(), 400);
                 }
@@ -702,7 +702,7 @@ try {
                         'validation' => $validation
                     ]);
                 } else {
-                    jsonError('Erreur lors de l\'upload du fichier', 500);
+                    jsonError('Error while uploading file', 500);
                 }
             }
             break;
@@ -741,7 +741,7 @@ try {
                         $smtpConfigManager = new SMTPConfigManager();
                         $smtpConfig = $smtpConfigManager->loadConfig($data['smtp_config_id']);
                         if (!$smtpConfig) {
-                            jsonError('Configuration SMTP introuvable', 404);
+                            jsonError('SMTP configuration not found', 404);
                             break;
                         }
                         $provider = $smtpConfig['provider'] ?? 'smtp';
@@ -775,7 +775,7 @@ try {
                     if ($provider === 'brevo') {
                         $apiKey = $credentials['api_key'] ?? '';
                         if (empty($apiKey)) {
-                            jsonError('Clé API Brevo requise', 400);
+                            jsonError('Brevo API key required', 400);
                             break;
                         }
                         
@@ -797,13 +797,13 @@ try {
                         // curl_close() n'est plus nécessaire depuis PHP 8.0
                         
                         if ($curlError) {
-                            jsonError('Erreur de connexion à Brevo: ' . $curlError, 500);
+                            jsonError('Brevo connection error: ' . $curlError, 500);
                             break;
                         }
                         
                         if ($httpCode !== 200) {
                             $errorData = json_decode($response, true);
-                            $errorMsg = $errorData['message'] ?? 'Erreur API Brevo (code ' . $httpCode . ')';
+                            $errorMsg = $errorData['message'] ?? 'Brevo API error (code ' . $httpCode . ')';
                             jsonError($errorMsg, $httpCode);
                             break;
                         }
@@ -812,7 +812,7 @@ try {
                         
                         // Extraire les infos pertinentes
                         $brevoInfo = [
-                            'message' => 'Connexion réussie',
+                            'message' => 'Connection successful',
                             'provider' => 'brevo',
                             'account' => [
                                 'email' => $accountInfo['email'] ?? null,
@@ -872,10 +872,10 @@ try {
                     $result = $testMailer->testConnection();
                     
                     if ($result) {
-                        jsonSuccess(['message' => 'Connexion réussie', 'provider' => $provider]);
+                        jsonSuccess(['message' => 'Connection successful', 'provider' => $provider]);
                     } else {
                         // Vérifier les logs pour l'erreur exacte
-                        jsonError('Échec de la connexion - Vérifiez les logs pour plus de détails', 400);
+                        jsonError('Connection failed - check logs for more details', 400);
                     }
                 } catch (\Exception $e) {
                     $logger->error("Erreur test SMTP", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -894,7 +894,7 @@ try {
                     $smtpConfigManager = new SMTPConfigManager();
                     $smtpConfig = $smtpConfigManager->loadConfig($data['smtp_config_id']);
                     if (!$smtpConfig) {
-                        jsonError('Configuration SMTP introuvable', 404);
+                        jsonError('SMTP configuration not found', 404);
                         break;
                     }
                     $provider = strtolower((string)($smtpConfig['provider'] ?? ''));
@@ -920,7 +920,7 @@ try {
                     }
                 }
                 if ($provider !== 'ses' && $provider !== 'amazonses') {
-                    jsonError('Cette action est réservée à Amazon SES.', 400);
+                    jsonError('This action is available for Amazon SES only.', 400);
                     break;
                 }
                 $access = trim((string)($credentials['access_key'] ?? ''));
@@ -972,7 +972,7 @@ try {
                     $smtpConfigManager = new SMTPConfigManager();
                     $smtpConfig = $smtpConfigManager->loadConfig($data['smtp_config_id']);
                     if (!$smtpConfig) {
-                        jsonError('Configuration SMTP introuvable', 404);
+                        jsonError('SMTP configuration not found', 404);
                         break;
                     }
                     $provider = strtolower((string) ($smtpConfig['provider'] ?? ''));
@@ -1001,7 +1001,7 @@ try {
                 if ($provider === 'brevo') {
                     $apiKey = trim((string) ($credentials['api_key'] ?? ''));
                     if ($apiKey === '') {
-                        jsonError('Clé API Brevo requise pour lister les expéditeurs.', 400);
+                        jsonError('Brevo API key required to list senders.', 400);
                         break;
                     }
                     $client = new BrevoSendersClient();
@@ -1028,7 +1028,7 @@ try {
                     }
                     if ($access === '' || $secret === '') {
                         jsonError(
-                            'Pour lister les identités Amazon SES, il faut l’Access Key ID et la Secret Access Key.',
+                            'To list Amazon SES identities, Access Key ID and Secret Access Key are required.',
                             400
                         );
                         break;
@@ -1042,7 +1042,7 @@ try {
                 if ($provider === 'sendgrid') {
                     $apiKey = SendGridRestClient::normalizeApiKey(trim((string) ($credentials['api_key'] ?? '')));
                     if ($apiKey === '') {
-                        jsonError('Clé API SendGrid requise pour lister les identités expéditeur.', 400);
+                        jsonError('SendGrid API key required to list sender identities.', 400);
                         break;
                     }
                     $regionHint = SendGridRestClient::normalizeRegionHint(trim((string) ($credentials['sendgrid_region'] ?? '')));
@@ -1053,7 +1053,7 @@ try {
                     $locked = null;
                     $vs = $sgClient->get('/v3/verified_senders?limit=200', $apiKey, $locked);
                     if (!$vs['ok']) {
-                        jsonError($vs['error'] ?? 'SendGrid : impossible de lister les expéditeurs vérifiés.', 400);
+                        jsonError($vs['error'] ?? 'SendGrid: unable to list verified senders.', 400);
                         break;
                     }
                     $list = SendGridRestClient::parseVerifiedSendersResponse(\is_array($vs['data']) ? $vs['data'] : null);
@@ -1061,7 +1061,7 @@ try {
                     break;
                 }
 
-                jsonError('Liste d’expéditeurs disponible pour Brevo, Amazon SES et SendGrid uniquement.', 400);
+                jsonError('Sender list is available for Brevo, Amazon SES, and SendGrid only.', 400);
             } catch (\Throwable $e) {
                 $logger->error('verified_senders', ['error' => $e->getMessage()]);
                 jsonError($e->getMessage(), 500);
@@ -1079,7 +1079,7 @@ try {
                     $smtpConfigManager = new SMTPConfigManager();
                     $smtpConfig = $smtpConfigManager->loadConfig($data['smtp_config_id']);
                     if (!$smtpConfig) {
-                        jsonError('Configuration SMTP introuvable', 404);
+                        jsonError('SMTP configuration not found', 404);
                         break;
                     }
                     $provider = strtolower((string) ($smtpConfig['provider'] ?? ''));
@@ -1128,7 +1128,7 @@ try {
                 if ($provider === 'brevo') {
                     $apiKey = trim((string) ($credentials['api_key'] ?? ''));
                     if ($apiKey === '') {
-                        jsonError('Clé API Brevo requise.', 400);
+                        jsonError('Brevo API key required.', 400);
                         break;
                     }
                     $payload = $inspector->inspectBrevo($apiKey);
@@ -1180,7 +1180,7 @@ try {
                 if ($provider === 'sendgrid') {
                     $apiKey = trim((string) ($credentials['api_key'] ?? ''));
                     if ($apiKey === '') {
-                        jsonError('Clé API SendGrid requise.', 400);
+                        jsonError('SendGrid API key required.', 400);
                         break;
                     }
                     $sgRegion = trim((string) ($credentials['sendgrid_region'] ?? ''));
@@ -1221,7 +1221,7 @@ try {
                     $smtpConfigManager = new SMTPConfigManager();
                     $cfg = $smtpConfigManager->loadConfig((string) $data['smtp_config_id']);
                     if (!$cfg) {
-                        jsonError('Configuration SMTP introuvable', 404);
+                        jsonError('SMTP configuration not found', 404);
                         break;
                     }
                     if (strtolower((string) ($cfg['provider'] ?? '')) !== 'sendgrid') {
@@ -1237,7 +1237,7 @@ try {
 
                 $apiKey = SendGridRestClient::normalizeApiKey($apiKey);
                 if ($apiKey === '') {
-                    jsonError('Clé API SendGrid requise.', 400);
+                    jsonError('SendGrid API key required.', 400);
                     break;
                 }
 
@@ -1311,14 +1311,14 @@ try {
                     $data = json_decode(file_get_contents('php://input'), true);
                     
                     if (empty($data['smtp_config_id'])) {
-                        jsonError('Configuration SMTP requise', 400);
+                        jsonError('SMTP configuration required', 400);
                         break;
                     }
                     
                     $smtpConfigManager = new SMTPConfigManager();
                     $smtpConfig = $smtpConfigManager->loadConfig($data['smtp_config_id']);
                     if (!$smtpConfig) {
-                        jsonError('Configuration SMTP introuvable', 404);
+                        jsonError('SMTP configuration not found', 404);
                         break;
                     }
                     
@@ -1358,7 +1358,7 @@ try {
                     if (!empty($data['template_id'])) {
                         $template = $templateManager->getTemplate($data['template_id']);
                         if (!$template) {
-                            jsonError('Template introuvable', 404);
+                            jsonError('Template not found', 404);
                             break;
                         }
                         
@@ -1399,7 +1399,7 @@ try {
                     // Envoyer l'email
                     $testMailer->send($email);
                     
-                    jsonSuccess(['message' => 'Email de test envoyé avec succès']);
+                    jsonSuccess(['message' => 'Test email sent successfully']);
                 } catch (\Exception $e) {
                     jsonError($e->getMessage(), 500);
                 }
@@ -1407,7 +1407,7 @@ try {
             break;
 
         default:
-            jsonError('Action non trouvée', 404);
+            jsonError('Action not found', 404);
         }
 } catch (\Exception $e) {
     // Logger l'erreur
@@ -1419,7 +1419,7 @@ try {
             'trace' => $e->getTraceAsString()
         ]);
     }
-    jsonError('Erreur serveur: ' . $e->getMessage(), 500);
+    jsonError('Server error: ' . $e->getMessage(), 500);
 } catch (\Error $e) {
     // Logger les erreurs fatales
     if (isset($logger)) {
@@ -1430,7 +1430,7 @@ try {
             'trace' => $e->getTraceAsString()
         ]);
     }
-    jsonError('Erreur fatale: ' . $e->getMessage(), 500);
+    jsonError('Fatal error: ' . $e->getMessage(), 500);
 }
 
 // Nettoyer le buffer de sortie à la fin

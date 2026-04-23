@@ -129,11 +129,75 @@ class CampaignManager
         return $lo + $u * $span;
     }
 
+    private function mixedToBool($value, bool $default = false): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+        if (\is_bool($value)) {
+            return $value;
+        }
+        if (\is_int($value) || \is_float($value)) {
+            return ((int) $value) !== 0;
+        }
+        if (\is_string($value)) {
+            $v = \strtolower(\trim($value));
+            if ($v === '') {
+                return $default;
+            }
+            if (\in_array($v, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+            if (\in_array($v, ['0', 'false', 'no', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return (bool) $value;
+    }
+
+    /**
+     * @return array{from_email: string, from_name: ?string}
+     */
+    private function resolveSenderForSmtp(array $config, string $smtpId): array
+    {
+        $globalFromEmail = \trim((string) ($config['from_email'] ?? ''));
+        $globalFromName = \trim((string) ($config['from_name'] ?? ''));
+        $resolvedFromEmail = $globalFromEmail;
+        $resolvedFromName = ($globalFromName !== '') ? $globalFromName : null;
+
+        $senderMode = (($config['smtp_sender_mode'] ?? 'default') === 'per_smtp') ? 'per_smtp' : 'default';
+        $nameMode = (($config['smtp_from_name_mode'] ?? 'global') === 'per_smtp') ? 'per_smtp' : 'global';
+        $perSmtp = (isset($config['smtp_per_smtp']) && \is_array($config['smtp_per_smtp'])) ? $config['smtp_per_smtp'] : [];
+        $row = (isset($perSmtp[$smtpId]) && \is_array($perSmtp[$smtpId])) ? $perSmtp[$smtpId] : null;
+
+        if ($senderMode === 'per_smtp' && $row !== null) {
+            $useDefaultFrom = $this->mixedToBool($row['use_default_from'] ?? true, true);
+            $customFromEmail = \trim((string) ($row['from_email'] ?? ''));
+            if (!$useDefaultFrom && $customFromEmail !== '') {
+                $resolvedFromEmail = $customFromEmail;
+            }
+        }
+
+        if ($nameMode === 'per_smtp' && $row !== null) {
+            $useGlobalName = $this->mixedToBool($row['use_global_name'] ?? true, true);
+            $customFromName = \trim((string) ($row['from_name'] ?? ''));
+            if (!$useGlobalName) {
+                $resolvedFromName = $customFromName !== '' ? $customFromName : null;
+            }
+        }
+
+        return [
+            'from_email' => $resolvedFromEmail,
+            'from_name' => $resolvedFromName,
+        ];
+    }
+
     /**
      * @return array{
      *   mode: 'sequential'|'parallel',
      *   every: int,
-     *   entries: list<array{id: string, label: string, mailer: MailerManager}>
+     *   entries: list<array{id: string, label: string, mailer: MailerManager, from_email: string, from_name: ?string}>
      * }
      */
     private function buildSmtpRouting(array $config, string $campaignId): array
@@ -167,11 +231,16 @@ class CampaignManager
                 $this->writeCampaignLog($campaignId, "ERREUR: Configuration SMTP introuvable (ID: {$id})", 'error');
                 continue;
             }
+            $senderForSmtp = $this->resolveSenderForSmtp($config, $id);
+            if (\trim((string) ($senderForSmtp['from_email'] ?? '')) === '') {
+                $this->writeCampaignLog($campaignId, "ERREUR: From email manquant pour SMTP {$id}", 'error');
+                continue;
+            }
             $mailerConfig = [
                 'provider' => $smtpConfig['provider'] ?? 'smtp',
                 'credentials' => $smtpConfig,
-                'from_email' => $config['from_email'] ?? '',
-                'from_name' => $config['from_name'] ?? '',
+                'from_email' => $senderForSmtp['from_email'],
+                'from_name' => $senderForSmtp['from_name'] ?? '',
             ];
             $mailer = new \ChadMailer\Mailer\MailerManager($mailerConfig, $this->logger);
             try {
@@ -184,6 +253,8 @@ class CampaignManager
                 'id' => $id,
                 'label' => (string) ($smtpConfig['name'] ?? $smtpConfig['host'] ?? $id),
                 'mailer' => $mailer,
+                'from_email' => $senderForSmtp['from_email'],
+                'from_name' => $senderForSmtp['from_name'],
             ];
         }
 
@@ -463,10 +534,14 @@ class CampaignManager
 
                 // Créer l'email avec Symfony Mime
                 $email = new \Symfony\Component\Mime\Email();
+                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
+                $smtpEntry = $smtpPool[$smtpIdx];
                 
                 // From
-                $fromEmail = $config['from_email'];
-                $fromName = !empty($config['from_name']) ? $config['from_name'] : null;
+                $fromEmail = (string) ($smtpEntry['from_email'] ?? ($config['from_email'] ?? ''));
+                $fromName = !empty($smtpEntry['from_name'])
+                    ? (string) $smtpEntry['from_name']
+                    : (!empty($config['from_name']) ? (string) $config['from_name'] : null);
                 if ($fromName) {
                     $email->from(new \Symfony\Component\Mime\Address($fromEmail, $fromName));
                 } else {
@@ -504,8 +579,6 @@ class CampaignManager
                     $email->getHeaders()->addTextHeader('List-Unsubscribe', '<mailto:unsub@noreply.invalid>');
                 }
 
-                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
-                $smtpEntry = $smtpPool[$smtpIdx];
                 if ($smtpMode === 'parallel') {
                     $now = microtime(true);
                     $wait = $smtpNextReadyAt[$smtpIdx] - $now;
@@ -766,9 +839,13 @@ class CampaignManager
 
                 // Créer l'email
                 $email = new \Symfony\Component\Mime\Email();
+                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
+                $smtpEntry = $smtpPool[$smtpIdx];
                 
-                $fromEmail = $config['from_email'];
-                $fromName = !empty($config['from_name']) ? $config['from_name'] : null;
+                $fromEmail = (string) ($smtpEntry['from_email'] ?? ($config['from_email'] ?? ''));
+                $fromName = !empty($smtpEntry['from_name'])
+                    ? (string) $smtpEntry['from_name']
+                    : (!empty($config['from_name']) ? (string) $config['from_name'] : null);
                 if ($fromName) {
                     $email->from(new \Symfony\Component\Mime\Address($fromEmail, $fromName));
                 } else {
@@ -792,8 +869,6 @@ class CampaignManager
                     $email->text($emailContent['text']);
                 }
 
-                $smtpIdx = $this->pickSmtpIndex($index, $smtpCount, $smtpEvery, $smtpMode);
-                $smtpEntry = $smtpPool[$smtpIdx];
                 if ($smtpMode === 'parallel') {
                     $now = microtime(true);
                     $wait = $smtpNextReadyAt[$smtpIdx] - $now;

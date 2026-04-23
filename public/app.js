@@ -158,6 +158,116 @@ const UI_TRANSLATIONS_FR_TO_EN = [
   ['États-Unis / global', 'United States / global'],
   ['Union européenne', 'European Union'],
   ['Aperçu avec données réelles — modifiez le HTML puis réappliquez pour mettre à jour.', 'Preview with real data - edit the HTML and reapply to refresh.'],
+  ['Aperçu avec exemples fictifs — choisissez une campagne (ou le brouillon) et cliquez « Appliquer » pour une vraie ligne.', 'Preview with sample data - choose a campaign (or draft) and click "Apply" for a real row.'],
+  ['Saisissez du HTML à gauche pour afficher l’aperçu ici.', 'Enter HTML on the left to display preview here.'],
+  ['Récapitulatif avant envoi', 'Pre-send summary'],
+  ['Envoi forcé', 'Forced send'],
+  ['Score délivrabilité', 'Deliverability score'],
+  ['Campagne existante — score non recalculé dans ce résumé.', 'Existing campaign - score not recalculated in this summary.'],
+  ['Délai entre e-mails', 'Delay between emails'],
+  ['Durée estimée (ordre de grandeur)', 'Estimated duration (approx.)'],
+  ['Emails envoyés', 'Emails sent'],
+  ['Aucune campagne récente. Les dernières campagnes apparaîtront ici.', 'No recent campaign. Latest campaigns will appear here.'],
+  ['Par où commencer ? Créez un template de courriel, puis une campagne avec votre liste de contacts.', 'Where to start? Create an email template, then a campaign with your contact list.'],
+  ['Créer un template', 'Create a template'],
+  ['Aucun modèle pour l’instant', 'No template yet'],
+  ['Créez un premier template : sujet, HTML, variables', 'Create your first template: subject, HTML, variables'],
+  ['Retournez à « Tous les templates » puis glissez des letters ici.', 'Go back to "All templates" then drag templates here.'],
+  ['Glissez un élément ici pour le déplacer', 'Drag an item here to move it'],
+  ['Créer un dossier', 'Create a folder'],
+  ['Template enregistré', 'Template saved'],
+  ['Terminée', 'Completed'],
+  ['Échouée', 'Failed'],
+  ['Arrêtée', 'Stopped'],
+  ['Impossible de modifier une campagne en cours. Mettez-la en pause ou arrêtez-la d’abord.', 'Cannot edit a running campaign. Pause or stop it first.'],
+  ['Les fichiers Excel ne sont pas pris en charge. Exportez votre table en CSV (une ligne d’en-têtes + une ligne par contact).', 'Excel files are not supported. Export as CSV (one header row + one row per contact).'],
+  ['Sélectionnez au moins un template.', 'Select at least one template.'],
+  ['Sélectionnez au moins un SMTP pour la rotation.', 'Select at least one SMTP for rotation.'],
+  ['Choisissez un email expéditeur.', 'Choose a sender email.'],
+  ['Choisissez un email expéditeur (liste API ou saisie libre selon le fournisseur).', 'Choose a sender email (API list or manual input depending on provider).'],
+  ['Importez une liste de destinataires (ou rouvrez la campagne si le fichier a été perdu).', 'Import a recipient list (or reopen campaign if file was lost).'],
+  ['Lancez d’abord l’analyse de délivrabilité, ou utilisez « Envoyer quand même » si vous acceptez le risque.', 'Run deliverability analysis first, or use "Send anyway" if you accept the risk.'],
+  ['Enregistrez d’abord le nouveau SMTP (« Enregistrer & utiliser pour cette campagne »), ou sélectionnez une configuration existante.', 'Save the new SMTP first ("Save & use for this campaign"), or select an existing configuration.'],
+  ['Impossible de récupérer l\'ID de campagne.', 'Unable to get campaign ID.'],
+  ['Erreur mise à jour campagne', 'Campaign update error'],
+  ['Erreur création campagne', 'Campaign creation error'],
+  ['Erreur analyse', 'Analysis error'],
+  ['Erreur upload', 'Upload error'],
+  ['Erreur parsing', 'Parsing error'],
+  ['Erreur score', 'Score error'],
+  ['Aucun expéditeur disponible', 'No sender available'],
+  ['Aucun expéditeur listé pour ce compte.', 'No sender listed for this account.'],
+  ['Aucun expéditeur actif trouvé.', 'No active sender found.'],
+  ['Choisissez une configuration SMTP', 'Choose an SMTP configuration'],
+  ['Choisissez un expéditeur', 'Choose a sender'],
+  ['Choisissez une campagne', 'Choose a campaign'],
+  ['Campagne introuvable', 'Campaign not found'],
+  ['Aucune donnée en cache pour cette session', 'No cached data for this session'],
+  ['Interroger l’API', 'Query API'],
+  ['Historique', 'History'],
+  ['Saisie libre', 'Manual entry'],
+  ['fournit pas', 'does not provide'],
+  ['ne propose pas', 'does not provide'],
+  ['dans l’app.', 'in the app.'],
+  ['adresse', 'address'],
+  ['adresses', 'addresses'],
+  ['enregistrée', 'saved'],
+  ['enregistré', 'saved'],
+  ['vérifié', 'verified'],
+  ['vérifiée', 'verified'],
+  ['Vérifiez', 'Check'],
+  ['d’abord', 'first'],
+  ['Renseignez', 'Fill in'],
+  ['compte', 'account'],
+  ['chargement', 'loading'],
+  ['charger', 'load'],
+  ['impossible de charger', 'unable to load'],
+  ['Impossible de charger', 'Unable to load'],
+  ['Impossible d’enregistrer la campagne', 'Unable to save campaign'],
+  ['Impossible de charger la campagne', 'Unable to load campaign'],
+  ['Erreur prévisualisation', 'Preview error'],
+  ['Modifier la campagne', 'Edit campaign'],
+  ['Nouvelle campagne', 'New campaign'],
+  ['Enregistrer & lancer l’envoi', 'Save & start sending'],
+  ['Campagne ', 'Campaign '],
+  ['Connexion réussie', 'Connection successful'],
+  ['réponse serveur inattendue', 'unexpected server response'],
+  ['Erreur inconnue', 'Unknown error'],
+  ['erreur inconnue', 'unknown error'],
+  ['Erreur lors de la sauvegarde', 'Error while saving'],
+  ['Erreur lors de la suppression', 'Error while deleting'],
+  ['Erreur création dossier', 'Folder creation error'],
+  ['Impossible de déplacer le template', 'Unable to move template'],
+  ['Impossible de déplacer le dossier', 'Unable to move folder'],
+  ['Aucun message correspondant', 'No matching message'],
+  ['Essayez d’élargir les filtres', 'Try widening filters'],
+  ['ou de charger un nombre plus élevé', 'or loading a higher number'],
+  ['Sélectionnez une campagne', 'Select a campaign'],
+  ['Erreur chargement campagnes', 'Campaign loading error'],
+  ['Erreur envoi', 'Send error'],
+  ['Erreur lors du relancement', 'Relaunch error'],
+  ['Erreur lors de l\'upload', 'Upload error'],
+  ['Erreur lors de l’upload', 'Upload error'],
+  ['Échec :', 'Failed:'],
+  ['expéditeur (From) sont requis', 'sender (From) are required'],
+  ['sont requis', 'are required'],
+  ['Aucune identité listée', 'No identity listed'],
+  ['Aucune identité vérifiée', 'No verified identity'],
+  ['Identité', 'Identity'],
+  ['identité', 'identity'],
+  ['Aucune donnée en cache', 'No cached data'],
+  ['cliquez sur', 'click'],
+  ['Introspection API disponible pour', 'API introspection available for'],
+  ['uniquement', 'only'],
+  ['Temps restant', 'Time remaining'],
+  ['Relancer l’envoi', 'Relaunch sending'],
+  ['Utilisez', 'Use'],
+  ['pour les changer', 'to change them'],
+  ['en attente', 'pending'],
+  ['arrêtée', 'stopped'],
+  ['envoyés', 'sent'],
+  ['Fichier', 'File'],
+  ['destinataire(s)', 'recipient(s)'],
   ['Le nom du template est requis.', 'Template name is required.'],
   ['Le nom du dossier est requis.', 'Folder name is required.'],
   ['Le nom de la configuration est requis.', 'Configuration name is required.'],
@@ -1123,9 +1233,14 @@ function collectCampaignConfig(extra = {}) {
   const smtpRotationEnabledEl = document.getElementById('smtpRotationEnabled');
   const smtpRotationEveryEl = document.getElementById('smtpRotationEvery');
   const smtpRotationModeEl = document.getElementById('smtpRotationMode');
+  const smtpSenderModeEl = document.getElementById('smtpSenderMode');
+  const smtpFromNameModeEl = document.getElementById('smtpFromNameMode');
   const smtpRotationEnabled = !!(smtpRotationEnabledEl && smtpRotationEnabledEl.checked);
   const smtpRotationIds = getSelectedSmtpRotationIds();
   if (smtpRotationEnabled && smtpRotationIds.length === 0 && smtpId) smtpRotationIds.push(smtpId);
+  const smtpSenderMode = smtpSenderModeEl && smtpSenderModeEl.value === 'per_smtp' ? 'per_smtp' : 'default';
+  const smtpFromNameMode = smtpFromNameModeEl && smtpFromNameModeEl.value === 'per_smtp' ? 'per_smtp' : 'global';
+  const smtpPerSmtp = collectSmtpPerSenderMapFromUi();
   const delayMinEl = document.getElementById('delayMin');
   const delayMaxEl = document.getElementById('delayMax');
   const parseDelaySec = el => {
@@ -1160,6 +1275,9 @@ function collectCampaignConfig(extra = {}) {
     smtp_rotation_ids: smtpRotationEnabled ? smtpRotationIds : [],
     smtp_rotation_every: Math.max(1, parseInt(smtpRotationEveryEl && smtpRotationEveryEl.value, 10) || 1),
     smtp_rotation_mode: (smtpRotationModeEl && smtpRotationModeEl.value === 'parallel') ? 'parallel' : 'sequential',
+    smtp_sender_mode: smtpSenderMode,
+    smtp_from_name_mode: smtpFromNameMode,
+    smtp_per_smtp: smtpPerSmtp,
     ...extra
   };
   if (smtpRotationEnabled && smtpRotationIds.length > 0 && !smtpId) {
@@ -1228,6 +1346,117 @@ function setSelectedSmtpRotationIds(ids) {
   });
 }
 
+function getSenderRoutingSmtpIds() {
+  const rotationEnabled = !!document.getElementById('smtpRotationEnabled')?.checked;
+  const ids = rotationEnabled
+    ? getSelectedSmtpRotationIds()
+    : [String(document.getElementById('smtpConfigSelect')?.value || '')];
+  return ids
+    .map(String)
+    .filter(id => id && id !== '__new__')
+    .filter((id, idx, arr) => arr.indexOf(id) === idx);
+}
+
+function collectSmtpPerSenderMapFromUi() {
+  const wrap = document.getElementById('smtpSenderOverridesList');
+  if (!wrap) return {};
+  const out = {};
+  wrap.querySelectorAll('[data-smtp-sender-item]').forEach(item => {
+    const smtpId = String(item.getAttribute('data-smtp-id') || '').trim();
+    if (!smtpId) return;
+    const useDefaultFrom = !!item.querySelector('input[data-smtp-use-default-from]')?.checked;
+    const fromEmail = String(item.querySelector('input[data-smtp-from-email]')?.value || '').trim();
+    const useGlobalName = !!item.querySelector('input[data-smtp-use-global-name]')?.checked;
+    const fromName = String(item.querySelector('input[data-smtp-from-name]')?.value || '').trim();
+    out[smtpId] = {
+      use_default_from: useDefaultFrom,
+      from_email: fromEmail,
+      use_global_name: useGlobalName,
+      from_name: fromName
+    };
+  });
+  return out;
+}
+
+function renderSmtpSenderOverridesList(preferredMap = null) {
+  const wrap = document.getElementById('smtpSenderOverridesList');
+  if (!wrap) return;
+  const ids = getSenderRoutingSmtpIds();
+  const remembered = preferredMap && typeof preferredMap === 'object'
+    ? preferredMap
+    : collectSmtpPerSenderMapFromUi();
+  const senderMode = document.getElementById('smtpSenderMode')?.value === 'per_smtp' ? 'per_smtp' : 'default';
+  const nameMode = document.getElementById('smtpFromNameMode')?.value === 'per_smtp' ? 'per_smtp' : 'global';
+  if (ids.length === 0) {
+    wrap.innerHTML = '<p class="field-hint">Select SMTP to configure sender routing.</p>';
+    return;
+  }
+  wrap.innerHTML = ids.map(id => {
+    const smtp = (state.smtpConfigs || []).find(s => String(s.id) === String(id));
+    const label = escHtml(smtp ? (smtp.name || smtp.host || ('Config ' + id)) : id);
+    const override = remembered && typeof remembered === 'object' ? (remembered[id] || {}) : {};
+    const useDefaultFrom = override.use_default_from !== false;
+    const useGlobalName = override.use_global_name !== false;
+    const fromEmail = escAttr(override.from_email || '');
+    const fromName = escAttr(override.from_name || '');
+    const emailInputDisabled = senderMode !== 'per_smtp' || useDefaultFrom ? ' disabled' : '';
+    const nameInputDisabled = nameMode !== 'per_smtp' || useGlobalName ? ' disabled' : '';
+    return `
+      <div class="smtp-sender-override-item" data-smtp-sender-item data-smtp-id="${escAttr(id)}">
+        <div class="smtp-sender-override-head">
+          <span class="smtp-sender-override-title">${label}</span>
+          <div class="smtp-sender-override-toggles">
+            <label class="smtp-sender-override-toggle">
+              <input type="checkbox" data-smtp-use-default-from${useDefaultFrom ? ' checked' : ''}${senderMode !== 'per_smtp' ? ' disabled' : ''}>
+              <span>Use default From email</span>
+            </label>
+            <label class="smtp-sender-override-toggle">
+              <input type="checkbox" data-smtp-use-global-name${useGlobalName ? ' checked' : ''}${nameMode !== 'per_smtp' ? ' disabled' : ''}>
+              <span>Use global sender name</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>From email override</label>
+            <input type="email" data-smtp-from-email placeholder="sender@domain.com" value="${fromEmail}"${emailInputDisabled}>
+          </div>
+          <div class="form-group">
+            <label>From name override</label>
+            <input type="text" data-smtp-from-name placeholder="Optional" value="${fromName}"${nameInputDisabled}>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function syncSmtpSenderOverridesDisabledState() {
+  const senderMode = document.getElementById('smtpSenderMode')?.value === 'per_smtp' ? 'per_smtp' : 'default';
+  const nameMode = document.getElementById('smtpFromNameMode')?.value === 'per_smtp' ? 'per_smtp' : 'global';
+  const wrap = document.getElementById('smtpSenderOverridesList');
+  if (!wrap) return;
+  wrap.querySelectorAll('[data-smtp-sender-item]').forEach(item => {
+    const useDefaultFromEl = item.querySelector('input[data-smtp-use-default-from]');
+    const useGlobalNameEl = item.querySelector('input[data-smtp-use-global-name]');
+    const fromEmailEl = item.querySelector('input[data-smtp-from-email]');
+    const fromNameEl = item.querySelector('input[data-smtp-from-name]');
+    if (useDefaultFromEl) useDefaultFromEl.disabled = senderMode !== 'per_smtp';
+    if (useGlobalNameEl) useGlobalNameEl.disabled = nameMode !== 'per_smtp';
+    if (fromEmailEl) fromEmailEl.disabled = senderMode !== 'per_smtp' || !!useDefaultFromEl?.checked;
+    if (fromNameEl) fromNameEl.disabled = nameMode !== 'per_smtp' || !!useGlobalNameEl?.checked;
+  });
+}
+
+function setSenderRoutingUiFromConfig(cfg = {}) {
+  const senderModeEl = document.getElementById('smtpSenderMode');
+  const fromNameModeEl = document.getElementById('smtpFromNameMode');
+  if (senderModeEl) senderModeEl.value = cfg.smtp_sender_mode === 'per_smtp' ? 'per_smtp' : 'default';
+  if (fromNameModeEl) fromNameModeEl.value = cfg.smtp_from_name_mode === 'per_smtp' ? 'per_smtp' : 'global';
+  renderSmtpSenderOverridesList(cfg.smtp_per_smtp && typeof cfg.smtp_per_smtp === 'object' ? cfg.smtp_per_smtp : {});
+  syncSmtpSenderOverridesDisabledState();
+}
+
 function renderSmtpRotationChecklist(preferredIds = []) {
   const wrap = document.getElementById('smtpRotationSelect');
   if (!wrap) return;
@@ -1253,16 +1482,19 @@ function updateSmtpSelectionUiMode() {
 
 function syncRotationSelectionWithPrimarySmtp() {
   const enabled = !!document.getElementById('smtpRotationEnabled')?.checked;
-  if (!enabled) return;
-  const primary = document.getElementById('smtpConfigSelect')?.value;
-  const ids = getSelectedSmtpRotationIds();
-  if (ids.length > 0) {
-    const sel = document.getElementById('smtpConfigSelect');
-    if (sel && ids[0] !== '__new__') sel.value = ids[0];
-    toggleCampaignSmtpNewPanel(false);
-  } else if (primary && primary !== '__new__') {
-    setSelectedSmtpRotationIds([primary]);
+  if (enabled) {
+    const primary = document.getElementById('smtpConfigSelect')?.value;
+    const ids = getSelectedSmtpRotationIds();
+    if (ids.length > 0) {
+      const sel = document.getElementById('smtpConfigSelect');
+      if (sel && ids[0] !== '__new__') sel.value = ids[0];
+      toggleCampaignSmtpNewPanel(false);
+    } else if (primary && primary !== '__new__') {
+      setSelectedSmtpRotationIds([primary]);
+    }
   }
+  renderSmtpSenderOverridesList();
+  syncSmtpSenderOverridesDisabledState();
 }
 
 function setSmtpRotationUiFromConfig(cfg = {}) {
@@ -1290,6 +1522,38 @@ function formatSmtpRoutingLabel(cfg = {}) {
     return `Rotation ${mode} (x${labels.length}, tous les ${every} e-mail(s)) : ${labels.join(', ')}`;
   }
   return smtpLabelForId(cfg.smtp_config_id);
+}
+
+function listSmtpIdsFromConfig(cfg = {}) {
+  if (cfg.smtp_rotation_enabled && Array.isArray(cfg.smtp_rotation_ids) && cfg.smtp_rotation_ids.length > 0) {
+    return cfg.smtp_rotation_ids.map(String).filter(Boolean);
+  }
+  if (cfg.smtp_config_id) return [String(cfg.smtp_config_id)];
+  return [];
+}
+
+function hasUsableFromEmail(config = {}) {
+  const globalFrom = String(config.from_email || '').trim();
+  if (globalFrom) return true;
+  if (config.smtp_sender_mode !== 'per_smtp') return false;
+  const per = config.smtp_per_smtp && typeof config.smtp_per_smtp === 'object' ? config.smtp_per_smtp : {};
+  const ids = listSmtpIdsFromConfig(config);
+  if (ids.length === 0) return false;
+  return ids.every(id => {
+    const row = per[id];
+    if (!row || typeof row !== 'object') return false;
+    if (row.use_default_from !== false) return false;
+    return String(row.from_email || '').trim() !== '';
+  });
+}
+
+function formatSenderRoutingLabel(cfg = {}) {
+  const base = cfg.from_name
+    ? `${String(cfg.from_name)} <${String(cfg.from_email || '')}>`
+    : String(cfg.from_email || '—');
+  const senderMode = cfg.smtp_sender_mode === 'per_smtp' ? 'per SMTP from email' : 'default from email';
+  const fromNameMode = cfg.smtp_from_name_mode === 'per_smtp' ? 'per SMTP sender name' : 'global sender name';
+  return `${base} (${senderMode}, ${fromNameMode})`;
 }
 
 function setCampaignFormEditMode(isEdit) {
@@ -1336,6 +1600,11 @@ function resetNewCampaignForm() {
     smtp_rotation_ids: [],
     smtp_rotation_every: 1,
     smtp_rotation_mode: 'sequential'
+  });
+  setSenderRoutingUiFromConfig({
+    smtp_sender_mode: 'default',
+    smtp_from_name_mode: 'global',
+    smtp_per_smtp: {}
   });
   const campPanel = document.getElementById('campaignSmtpNewPanel');
   if (campPanel) campPanel.classList.add('hidden');
@@ -1490,8 +1759,10 @@ async function openEditCampaign(campaignId) {
   await populateTemplateChips();
   await populateSmtpSelect(cfg.smtp_config_id || null, {
     preferredFromEmail: cfg.from_email || '',
-    preferredRotationIds: Array.isArray(cfg.smtp_rotation_ids) ? cfg.smtp_rotation_ids : []
+    preferredRotationIds: Array.isArray(cfg.smtp_rotation_ids) ? cfg.smtp_rotation_ids : [],
+    preferredSenderMap: cfg.smtp_per_smtp && typeof cfg.smtp_per_smtp === 'object' ? cfg.smtp_per_smtp : {}
   });
+  setSenderRoutingUiFromConfig(cfg);
   document.getElementById('campaignSmtpNewPanel')?.classList.add('hidden');
 
   const templateIds = (cfg.template_ids || []).map(String);
@@ -1786,6 +2057,19 @@ function initCampaignSmtpInline() {
   });
   document.getElementById('smtpRotationEvery')?.addEventListener('input', refreshCampaignSendButtonState);
   document.getElementById('smtpRotationMode')?.addEventListener('change', refreshCampaignSendButtonState);
+  document.getElementById('smtpSenderMode')?.addEventListener('change', () => {
+    syncSmtpSenderOverridesDisabledState();
+    refreshCampaignSendButtonState();
+  });
+  document.getElementById('smtpFromNameMode')?.addEventListener('change', () => {
+    syncSmtpSenderOverridesDisabledState();
+    refreshCampaignSendButtonState();
+  });
+  document.getElementById('smtpSenderOverridesList')?.addEventListener('change', () => {
+    syncSmtpSenderOverridesDisabledState();
+    refreshCampaignSendButtonState();
+  });
+  document.getElementById('smtpSenderOverridesList')?.addEventListener('input', refreshCampaignSendButtonState);
 
   document.getElementById('refreshVerifiedSendersBtn')?.addEventListener('click', () => {
     void refreshCampaignVerifiedSenders({ silent: false });
@@ -1816,6 +2100,8 @@ function initCampaignSmtpInline() {
   document.getElementById('campSesProbeAllBtn')?.addEventListener('click', () => runSesProbeAllRegions('camp'));
   if (rotPanel && rotEnabled) rotPanel.classList.toggle('hidden', !rotEnabled.checked);
   updateSmtpSelectionUiMode();
+  renderSmtpSenderOverridesList();
+  syncSmtpSenderOverridesDisabledState();
 }
 
 // ============================================
@@ -3746,6 +4032,9 @@ async function populateSmtpSelect(preferId = null, options = {}) {
 
   const preferredFromEmail = options.preferredFromEmail != null ? options.preferredFromEmail : '';
   const preferredRotationIds = Array.isArray(options.preferredRotationIds) ? options.preferredRotationIds.map(String) : [];
+  const preferredSenderMap = options.preferredSenderMap && typeof options.preferredSenderMap === 'object'
+    ? options.preferredSenderMap
+    : null;
 
   const keep =
     preferId != null && preferId !== ''
@@ -3782,6 +4071,8 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   }
 
   syncRotationSelectionWithPrimarySmtp();
+  renderSmtpSenderOverridesList(preferredSenderMap);
+  syncSmtpSenderOverridesDisabledState();
 
   await refreshCampaignVerifiedSenders({ silent: true, preferredEmail: preferredFromEmail });
 }
@@ -3861,7 +4152,7 @@ async function handleFileUpload() {
 async function handleAnalyze() {
   const cfg = collectCampaignConfig();
   if (cfg.template_ids.length === 0) return alert('Sélectionnez au moins un template.');
-  if (!cfg.from_email) return alert('Choisissez un email expéditeur.');
+  if (!hasUsableFromEmail(cfg)) return alert('Choisissez un email expéditeur.');
 
   const res = await api('score', 'POST', {
     template_ids: cfg.template_ids,
@@ -3895,7 +4186,20 @@ function validateCampaignBeforeSend(force = false) {
     }
     return 'Choisissez une configuration SMTP.';
   }
-  if (!getFromEmailValue()) return 'Choisissez un email expéditeur (liste API ou saisie libre selon le fournisseur).';
+  if (!hasUsableFromEmail(config)) return 'Choisissez un email expéditeur (liste API ou saisie libre selon le fournisseur).';
+  if (config.smtp_sender_mode === 'per_smtp') {
+    const per = config.smtp_per_smtp && typeof config.smtp_per_smtp === 'object' ? config.smtp_per_smtp : {};
+    const ids = listSmtpIdsFromConfig(config);
+    for (const id of ids) {
+      const row = per[id];
+      if (!row || typeof row !== 'object') {
+        return 'Configurez le sender par SMTP, ou repassez en sender par défaut.';
+      }
+      if (row.use_default_from === false && !String(row.from_email || '').trim()) {
+        return `Renseignez un From email pour le SMTP ${smtpLabelForId(id)} (ou cochez "Use default From email").`;
+      }
+    }
+  }
   if (!config.file_path) return 'Importez une liste de destinataires (ou rouvrez la campagne si le fichier a été perdu).';
   if (!state.editingCampaignId) {
     if (!force && (!state.scoreData || state.scoreData.score < 50)) {
@@ -4023,7 +4327,7 @@ async function openSendSummaryModal(forceSend = false) {
         <li><span>Nom</span><strong>${escHtml(name)}</strong></li>
         <li><span>Destinataires (fichier)</span><strong>${total.toLocaleString('fr-FR')}</strong></li>
         <li><span>Templates</span><strong>${templateNames.length ? escHtml(templateNames.join(', ')) : '—'}</strong></li>
-        <li><span>Expéditeur</span><strong>${escHtml(config.from_name ? `${config.from_name} <${config.from_email}>` : config.from_email || '—')}</strong></li>
+        <li><span>Expéditeur</span><strong>${escHtml(formatSenderRoutingLabel(config))}</strong></li>
         <li><span>SMTP</span><strong>${escHtml(formatSmtpRoutingLabel(config))}</strong></li>
         <li><span>Délai entre e-mails</span><strong>${delayMin}–${delayMax} s (moy. ${avgDelay.toFixed(1)} s${config.smtp_rotation_enabled && config.smtp_rotation_mode === 'parallel' ? ', par SMTP' : ''})</strong></li>
         <li><span>Durée estimée (ordre de grandeur)</span><strong>${formatEtaSeconds(etaLow)} — ${formatEtaSeconds(etaHigh)}</strong></li>
@@ -4142,9 +4446,7 @@ async function showCampaignDetail(campaignId) {
   const cfg = campaign.config || {};
   const metaBar = document.getElementById('detailMetaBar');
   if (metaBar) {
-    const fromLine = cfg.from_name
-      ? `${escHtml(cfg.from_name)} &lt;${escHtml(cfg.from_email || '')}&gt;`
-      : escHtml(cfg.from_email || '—');
+    const fromLine = escHtml(formatSenderRoutingLabel(cfg));
     metaBar.innerHTML = `
       <span><strong>De :</strong> ${fromLine}</span>
       <span><strong>SMTP :</strong> ${escHtml(formatSmtpRoutingLabel(cfg))}</span>
