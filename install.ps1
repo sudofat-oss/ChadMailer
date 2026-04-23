@@ -77,12 +77,13 @@ function Install-PhpIfNeeded {
 }
 
 function Write-Launchers {
-  $cmdContent = "@echo off`r`nphp `"%~dp0chadmailer.phar`" %*`r`n"
+  $cmdContent = "@echo off`r`nset ""CHADMAILER_PHAR_PATH=%~dp0chadmailer.phar""`r`nphp `"%~dp0chadmailer.phar`" %*`r`n"
   Set-Content -Path $CmdLauncherPath -Value $cmdContent -Encoding ASCII
 
   $psContent = @'
 param([Parameter(ValueFromRemainingArguments = $true)] [string[]]$Args)
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$env:CHADMAILER_PHAR_PATH = (Join-Path $ScriptDir "chadmailer.phar")
 & php (Join-Path $ScriptDir "chadmailer.phar") @Args
 '@
   Set-Content -Path $PsLauncherPath -Value $psContent -Encoding UTF8

@@ -153,6 +153,46 @@ function resolveWorkerEntrypoint(): ?string {
     return null;
 }
 
+/**
+ * @return array<string, mixed>
+ */
+function workerResolutionDiagnostics(): array {
+    $candidates = [];
+    $add = static function (string $label, string $path) use (&$candidates): void {
+        $candidates[] = [
+            'label' => $label,
+            'path' => $path,
+            'exists' => is_file($path),
+        ];
+    };
+
+    $runningPhar = \Phar::running(true);
+    if (\is_string($runningPhar) && $runningPhar !== '') {
+        $add('phar_running', $runningPhar);
+    }
+
+    $pharFromEnv = getenv('CHADMAILER_PHAR_PATH');
+    if (\is_string($pharFromEnv) && $pharFromEnv !== '') {
+        $add('env_CHADMAILER_PHAR_PATH', $pharFromEnv);
+    }
+
+    $add('relative_cli', __DIR__ . '/../cli.php');
+
+    $tmpDir = getenv('CHADMAILER_TMP_DIR');
+    if (\is_string($tmpDir) && $tmpDir !== '') {
+        $add('env_CHADMAILER_TMP_DIR_cli', rtrim($tmpDir, "/\\") . DIRECTORY_SEPARATOR . 'cli.php');
+    }
+
+    return [
+        'php_binary' => PHP_BINARY,
+        'cwd' => getcwd(),
+        'script_filename' => $_SERVER['SCRIPT_FILENAME'] ?? null,
+        'tmp_env' => $tmpDir ?: null,
+        'phar_env' => $pharFromEnv ?: null,
+        'candidates' => $candidates,
+    ];
+}
+
 try {
     // Initialisation
     $configManager = new ConfigManager();
@@ -451,6 +491,7 @@ try {
                 $phpBin = PHP_BINARY;
                 $entrypoint = resolveWorkerEntrypoint();
                 if ($entrypoint === null || $entrypoint === '') {
+                    $logger->error('worker_resolution_failed', workerResolutionDiagnostics());
                     jsonError('Impossible de localiser le worker (cli.php/PHAR).', 500);
                 }
                 $spawned = spawnCampaignWorker($phpBin, $entrypoint, $campaignId);

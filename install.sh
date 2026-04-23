@@ -98,6 +98,7 @@ write_launcher() {
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+export CHADMAILER_PHAR_PATH="$SCRIPT_DIR/chadmailer.phar"
 exec php "$SCRIPT_DIR/chadmailer.phar" "$@"
 EOF
   chmod +x "$LAUNCHER_FILE"
