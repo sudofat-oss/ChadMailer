@@ -1,67 +1,58 @@
 # ChadMailer
 
-ChadMailer is an email sender with a web interface to:
+> Be a Chad, use ChadMailer.
 
-- configure your provider (SMTP, SES, SendGrid, Brevo, etc.)
-- create templates
-- launch campaigns from CSV lists
-- run quick test sends
+ChadMailer is a **native desktop application** for running email campaigns. It's a Tauri 2 app written in Rust with a vanilla JS / HTML / CSS frontend — no Electron, no web server, no PHP.
 
-## Quick installation
+## Features
 
-### Linux
+- **Multi-provider** — send via SMTP, Microsoft 365, [Brevo](https://www.brevo.com/), [SendGrid](https://sendgrid.com/), [Amazon SES](https://aws.amazon.com/ses/), [Mailgun](https://www.mailgun.com/), [Mandrill](https://mandrillapp.com/) or [Postmark](https://postmarkapp.com/).
+- **SMTP / API rotation** — split a campaign across several configurations.
+- **Templates** with per-template URL rotation, `{{var}}` placeholders, `{{RANDNUM-8}}`-style randoms and an HTML preview that merges real recipient data.
+- **CSV / TXT recipient import** with column mapping, dedup, domain filter, "Gmail last" ordering.
+- **Deliverability score** — spam-word density, image / text ratio, HTML size, link analysis, unsubscribe presence, From-domain check.
+- **DNS verifier** — checks SPF / DKIM / DMARC for the sending domain.
+- **Live campaign monitor** — real-time progress events, per-recipient logs, pause / resume / stop, throttled stat persistence.
+- **Per-campaign proxy support** — paste an HTTP, HTTPS, SOCKS5 or SOCKS5h proxy list; pick a rotation frequency; optional per-proxy rate limit (e.g. "30 sends / minute, per proxy"). Works on **every** provider including SMTP / Office365, which go through a native RFC 5321 tunnel.
+- **Encrypted secrets at rest** — API keys, SMTP passwords and SES secret keys are AES-256-GCM encrypted with a key kept in the app data directory (`0600` perms on Unix).
+- **Auto plain-text fallback** — pure-HTML messages are auto-augmented with a derived `text/plain` part for deliverability.
+- **Input persistence** — the Lab and Settings forms remember what you typed across page navigation and app reloads (secrets excluded).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sudofat-oss/ChadMailer/main/install.sh | bash
+## Install
+
+### Prebuilt binaries
+
+Grab the latest installer from the [Releases page](https://github.com/sudofat-oss/ChadMailer/releases/latest):
+
+- **Linux** — `.deb` (Debian / Ubuntu), `.rpm` (Fedora / RHEL), `.AppImage` (universal)
+- **Windows** — `.msi` and `.exe` (NSIS installer). Requires the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11; one-time download on Windows 10).
+- **macOS** — `.dmg` (universal) when produced by CI
+
+### From source
+
+See [INSTALL.md](INSTALL.md).
+
+## Quick start
+
+1. Launch ChadMailer.
+2. **SMTP / API** → add a configuration (SMTP credentials or an API key for one of the supported providers).
+3. **Templates** → create at least one template. Use `{{first_name}}`, `{{rotate_url}}`, `{{RANDNUM-6}}`, etc.
+4. **Campaigns** → upload a CSV, pick templates and provider(s), tune the delay and (optionally) proxies, then **Send**.
+5. Watch progress live in the campaign detail view.
+
+## Data
+
+Everything lives under your user data directory (`~/.local/share/app.chadmailer.sender` on Linux, `%APPDATA%\app.chadmailer.sender` on Windows). Layout:
+
+```
+templates/        Template JSON + folders
+campaigns/        Campaign JSON + .log.jsonl per campaign
+provider_configs/ Encrypted SMTP / API configs
+uploads/          Recipient files saved through the UI
+logs/             Application logs
+.secrets.key      Master AES-256 key (0600 on Unix)
 ```
 
-### Windows (PowerShell)
+## License
 
-```powershell
-iwr -useb https://raw.githubusercontent.com/sudofat-oss/ChadMailer/main/install.ps1 | iex
-```
-
-The scripts automatically install PHP if needed, download the `.phar`, and prepare the `chadmailer` folder.
-
-## Run the application
-
-### Linux
-
-```bash
-./chadmailer/chadmailer
-```
-
-### Windows
-
-```powershell
-.\chadmailer\chadmailer.ps1
-```
-
-Then open:
-
-- `http://localhost:8000/index.html`
-
-## Useful commands
-
-Run on a custom port:
-
-```bash
-./chadmailer/chadmailer 8080 0.0.0.0
-```
-
-Send a campaign via CLI:
-
-```bash
-./chadmailer/chadmailer send <campaignId>
-```
-
-## Install from source (optional)
-
-```bash
-composer install
-php cli.php
-```
-
-## Repo
-
-- [https://github.com/sudofat-oss/ChadMailer](https://github.com/sudofat-oss/ChadMailer)
+[MIT](LICENSE) © 2026 sudofat-oss

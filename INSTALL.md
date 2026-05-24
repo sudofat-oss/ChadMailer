@@ -1,174 +1,53 @@
-# Guide d'installation ChadMailer
+# Building ChadMailer from source
 
-## Installation rapide
+## Requirements
 
-### Option A — One-line installer (Linux / Windows)
+| Platform | Toolchain | System libraries |
+|---|---|---|
+| Linux  | Rust 1.74+, Node 18+, Tauri CLI 2 | `webkit2gtk-4.1`, `libsoup3`, `gtk3`, `libayatana-appindicator3`, `librsvg2`, `patchelf` |
+| Windows | Rust 1.74+ (MSVC), Node 18+, Tauri CLI 2 | [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) runtime, Visual Studio Build Tools 2022 |
+| macOS  | Rust 1.74+, Node 18+, Tauri CLI 2, Xcode CLT | — |
 
-Le plus simple pour un poste vierge : détecte/installe PHP automatiquement, télécharge le PHAR et prépare le dossier d'exécution.
+### Linux package names (examples)
 
-Linux / macOS :
+- **Arch / Manjaro** — `pacman -S webkit2gtk-4.1 base-devel curl wget file openssl libappindicator-gtk3 librsvg gtk3`
+- **Debian / Ubuntu 22.04+** — `apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev`
+- **Fedora 38+** — `dnf install webkit2gtk4.1-devel gcc-c++ openssl-devel libxdo-devel libappindicator-gtk3-devel librsvg2-devel`
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/chadmailer/chadmailer/main/install.sh | bash
-```
-
-Windows (PowerShell) :
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/chadmailer/chadmailer/main/install.ps1 | iex
-```
-
-Variables optionnelles (dans les 2 scripts) :
-
-- `CHADMAILER_INSTALL_DIR` : dossier de destination (défaut : `./chadmailer`)
-- `CHADMAILER_RELEASE_URL` : URL directe du `chadmailer.phar`
-
-### Option B — Installation depuis les sources (Composer)
-
-### 1. Installer les dépendances
+## Build
 
 ```bash
-composer install
+# 1. Clone
+git clone https://github.com/sudofat-oss/ChadMailer.git
+cd ChadMailer
+
+# 2. Install JS deps (just the Tauri CLI wrapper)
+npm install
+
+# 3. Install Tauri CLI v2 (Rust)
+cargo install tauri-cli --version '^2'
+
+# 4. Run from source
+cargo tauri dev
+
+# 5. Build a release binary + native installer for the current OS
+cargo tauri build
 ```
 
-### 2. Configurer votre provider email
+Build artefacts are written under `src-tauri/target/release/bundle/`:
 
-Éditez `config/config.php` et ajoutez vos credentials :
+| Platform | Artefacts |
+|---|---|
+| Linux | `bundle/deb/*.deb`, `bundle/rpm/*.rpm`, `bundle/appimage/*.AppImage` |
+| Windows | `bundle/msi/*.msi`, `bundle/nsis/*-setup.exe` |
+| macOS | `bundle/dmg/*.dmg`, `bundle/macos/*.app` |
 
-**Pour Mailgun :**
-```php
-'mailer' => [
-    'provider' => 'mailgun',
-    'credentials' => [
-        'api_key' => 'votre-cle-api-mailgun',
-        'domain' => 'votre-domaine.com',
-    ],
-    'from_email' => 'noreply@votre-domaine.com',
-    'from_name' => 'Votre Nom',
-],
-```
-
-**Pour SendGrid :**
-```php
-'mailer' => [
-    'provider' => 'sendgrid',
-    'credentials' => [
-        'api_key' => 'votre-cle-api-sendgrid',
-    ],
-    'from_email' => 'noreply@votre-domaine.com',
-    'from_name' => 'Votre Nom',
-],
-```
-
-**Pour Amazon SES :**
-```php
-'mailer' => [
-    'provider' => 'amazonses',
-    'credentials' => [
-        'access_key' => 'votre-access-key',
-        'secret_key' => 'votre-secret-key',
-        'region' => 'us-east-1', // ou eu-west-1, etc.
-    ],
-    'from_email' => 'noreply@votre-domaine.com',
-    'from_name' => 'Votre Nom',
-],
-```
-
-### 3. Lancer l'application
-
-**Option A : Serveur PHP intégré (développement)**
-```bash
-php -S localhost:8000 -t public
-```
-
-Puis ouvrez : http://localhost:8000/index.html
-
-**Option B : Apache/Nginx**
-
-Configurez votre serveur web pour pointer vers le dossier `public/`.
-
-### 4. Tester la configuration
-
-1. Allez dans l'onglet "Configuration"
-2. Remplissez vos informations
-3. Sauvegardez
-
-## Création d'un exécutable
-
-### Méthode 1 : PHAR (Recommandé pour Linux/Mac)
+## Tests
 
 ```bash
-# Créer le PHAR
-php -d phar.readonly=0 build.php
-
-# Rendre exécutable
-chmod +x chadmailer.phar
-
-# Lancer
-./chadmailer.phar
+cd src-tauri
+cargo test --lib       # unit + integration tests
+cargo clippy --lib --all-targets -- -D warnings
 ```
 
-### Méthode 2 : PHPacker (Multiplateforme)
-
-```bash
-# Installer PHPacker
-composer require --dev phpacker/phpacker
-
-# Créer le PHAR d'abord
-php -d phar.readonly=0 build.php
-
-# Convertir en exécutable
-vendor/bin/phpacker build chadmailer.phar
-```
-
-### Méthode 3 : ExeOutput for PHP (Windows uniquement)
-
-1. Téléchargez ExeOutput for PHP
-2. Ouvrez le projet dans ExeOutput
-3. Compilez en .EXE
-
-## Première utilisation
-
-1. **Créer un template** :
-   - Allez dans "Templates"
-   - Créez un template avec des variables comme `{{nom}}`, `{{prenom}}`
-   - Voir `examples/template-example.json` pour un exemple
-
-2. **Préparer un CSV** :
-   - Créez un fichier CSV avec vos destinataires
-   - La première ligne doit contenir les en-têtes (email, nom, prenom, etc.)
-   - Voir `examples/example.csv` pour un exemple
-
-3. **Créer une campagne** :
-   - Allez dans "Campagnes"
-   - Uploadez votre CSV
-   - Sélectionnez vos templates
-   - Configurez les délais
-   - Créez la campagne
-
-4. **Lancer la campagne** :
-   - Cliquez sur "Lancer" sur la campagne créée
-   - Suivez les statistiques en temps réel
-
-## Dépannage
-
-### Erreur "Class not found"
-```bash
-composer dump-autoload
-```
-
-### Erreur d'upload CSV
-Vérifiez les permissions :
-```bash
-chmod 755 uploads/
-```
-
-### Erreur de configuration mailer
-Vérifiez que vos credentials sont corrects dans `config/config.php`.
-
-### Le PHAR ne fonctionne pas
-Assurez-vous que `phar.readonly=0` dans votre php.ini ou utilisez :
-```bash
-php -d phar.readonly=0 chadmailer.phar
-```
-
+The integration suite spins up an in-process SOCKS5 server, an in-process HTTP-CONNECT proxy and a fake SMTP server so the full proxied send pipeline is exercised on real sockets — no external services are required.

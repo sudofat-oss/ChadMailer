@@ -1,0 +1,50 @@
+mod app_state;
+mod campaign;
+mod commands;
+mod core;
+mod dns;
+mod mailer;
+mod providers;
+mod recipient;
+mod scoring;
+mod security;
+mod storage;
+mod template;
+
+use app_state::{AppPaths, AppState};
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "chadmailer=info,tauri=info".into()),
+        )
+        .compact()
+        .init();
+
+    tauri::Builder::default()
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            let paths = AppPaths::new(data_dir);
+            std::fs::create_dir_all(&paths.data_dir)?;
+            std::fs::create_dir_all(&paths.templates_dir)?;
+            std::fs::create_dir_all(&paths.campaigns_dir)?;
+            std::fs::create_dir_all(&paths.uploads_dir)?;
+            std::fs::create_dir_all(&paths.provider_configs_dir)?;
+            std::fs::create_dir_all(&paths.logs_dir)?;
+            if let Err(err) = security::secrets::initialize(&paths.data_dir) {
+                tracing::error!("chiffrement non disponible: {err}");
+            }
+            app.manage(AppState::new(paths));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::health_check,
+            commands::legacy_api,
+            commands::recipients::save_upload
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running ChadMailer Tauri application");
+}
