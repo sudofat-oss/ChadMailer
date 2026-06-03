@@ -25,8 +25,9 @@ ChadMailer is a **native desktop application** for running email campaigns. It's
 Grab the latest installer from the [Releases page](https://github.com/sudofat-oss/ChadMailer/releases/latest):
 
 - **Linux** — `.deb` (Debian / Ubuntu), `.rpm` (Fedora / RHEL), `.AppImage` (universal)
-- **Windows** — `.msi` and `.exe` (NSIS installer). Requires the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11; one-time download on Windows 10).
-- **macOS** — `.dmg` (universal) when produced by CI
+- **Windows** — `-setup.exe` (NSIS installer). Requires the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11; one-time download on Windows 10).
+
+macOS is not shipped as a prebuilt binary but builds from source — see [INSTALL.md](INSTALL.md).
 
 ### From source
 

@@ -1,12 +1,10 @@
 name: Release
 
-# Builds & publishes ChadMailer installers for every supported platform when
-# a `v*` tag is pushed (or when manually triggered). Linux is built on
-# `ubuntu-22.04` (oldest webkit2gtk-4.1-aware Ubuntu), Windows on `windows-latest`
-# (MSVC + WebView2 toolchains), macOS on a universal build (`aarch64` + `x86_64`).
-#
-# Tagging `v1.2.3` => GitHub release "ChadMailer v1.2.3" with every native
-# installer attached.
+# Builds & publishes the Windows installer for ChadMailer when a `v*` tag is
+# pushed (or when manually triggered) and attaches it to the GitHub release for
+# that tag. Linux installers (.deb/.rpm/.AppImage) are built locally and added
+# to the release directly. (macOS can be re-enabled by adding a `macos-latest`
+# matrix entry and setting `bundle.targets` to `"all"` in tauri.conf.json.)
 
 on:
   push:
@@ -23,14 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux installers (.deb/.rpm/.AppImage) are built locally and
-          # attached to the release directly, so CI only needs to produce the
-          # Windows and macOS artifacts. Re-add an `ubuntu-22.04` entry here if
-          # you want CI to build Linux too.
           - platform: windows-latest
             args: ""
-          - platform: macos-latest
-            args: "--target universal-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
 
@@ -45,28 +37,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          # macOS needs both arches for the universal bundle.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache cargo registry & target
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev \
-            libssl-dev \
-            build-essential \
-            curl wget file
 
       - name: Install JS deps
         run: npm install
@@ -84,8 +59,7 @@ jobs:
             Native installers for ChadMailer ${{ github.ref_name }}.
 
             - **Linux** — `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (any glibc-based distro).
-            - **Windows** — `.msi` and `-setup.exe` (NSIS). Requires WebView2.
-            - **macOS** — universal `.dmg`.
+            - **Windows** — `-setup.exe` (NSIS). Requires WebView2.
 
             See the [README](https://github.com/sudofat-oss/ChadMailer#readme) for usage.
           releaseDraft: false
