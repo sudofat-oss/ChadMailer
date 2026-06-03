@@ -2,20 +2,20 @@ use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Erreur disque: {0}")]
+    #[error("Disk error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("JSON invalide: {0}")]
+    #[error("Invalid JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("CSV invalide: {0}")]
+    #[error("Invalid CSV: {0}")]
     Csv(#[from] csv::Error),
     #[error("{0}")]
     Validation(String),
-    #[error("Ressource introuvable: {0}")]
+    #[error("Resource not found: {0}")]
     NotFound(String),
 
     #[error("DNS: {0}")]
     Dns(String),
-    #[error("Sécurité: {0}")]
+    #[error("Security: {0}")]
     Security(String),
 }
 

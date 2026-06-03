@@ -533,7 +533,7 @@ button:disabled {
     flex-wrap: wrap;
 }
 
-/* Liste SMTP / API : une ligne = titre + fournisseur + actions, sans wrap intempestif */
+/* SMTP / API list: one row = title + provider + actions, no unwanted wrapping */
 .smtp-config-row {
     display: flex;
     align-items: center;
@@ -747,7 +747,7 @@ button:disabled {
     }
 }
 
-/* Métadonnées : une paire label / valeur par ligne, lisible */
+/* Metadata: one label / value pair per line, readable */
 .smtp-config-detail-meta {
     display: grid;
     grid-template-columns: minmax(100px, max-content) minmax(0, 1fr);
@@ -825,7 +825,7 @@ button:disabled {
     font-variant-ligatures: none;
 }
 
-/* Clés collées visibles dans Lab — Tests (introspection uniquement) */
+/* Pasted keys shown in Lab — Tests (introspection only) */
 .testing-api-key-input {
     font-family:
         ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
@@ -1118,7 +1118,7 @@ button:disabled {
     cursor: grabbing;
 }
 
-/* Autre template en hover prolongé = prépare la fusion en dossier (iOS-like) */
+/* Another template on extended hover = prepares folder merge (iOS-like) */
 .template-card.merge-target {
     border-color: rgba(124, 58, 237, 0.9);
     box-shadow:
@@ -1288,7 +1288,7 @@ button:disabled {
     color: var(--text-primary);
 }
 
-/* Stack préview des letters (3 premières cartes en pile) */
+/* Letter preview stack (first 3 cards stacked) */
 .folder-card-stack {
     position: relative;
     flex: 1;
@@ -1386,7 +1386,7 @@ button:disabled {
     padding: 0 10px;
 }
 
-/* Couleurs des dossiers */
+/* Folder colors */
 .folder-card[data-color="violet"] {
     --folder-color: #7c3aed;
 }
@@ -1409,7 +1409,7 @@ button:disabled {
     --folder-color: #64748b;
 }
 
-/* Breadcrumb (navigation dans un dossier) */
+/* Breadcrumb (navigation inside a folder) */
 .templates-breadcrumb {
     display: flex;
     align-items: center;
@@ -1533,7 +1533,7 @@ button:disabled {
     opacity: 0.75;
 }
 
-/* Modal création/renommage dossier */
+/* Folder create / rename modal */
 .folder-edit-modal {
     max-width: 440px;
 }
@@ -1568,7 +1568,7 @@ button:disabled {
     transform: scale(1.1);
 }
 
-/* Couleur personnalisée via <input type="color"> */
+/* Custom color via <input type="color"> */
 .folder-color-custom {
     position: relative;
     width: 30px;
@@ -1646,7 +1646,7 @@ button:disabled {
     gap: 8px;
 }
 
-/* Zone d'accueil lorsque l'on tient un drag au niveau de la grille */
+/* Drop zone while holding a drag over the grid */
 .templates-grid.has-dragging {
     outline: 2px dashed rgba(124, 58, 237, 0.25);
     outline-offset: 6px;
@@ -2206,7 +2206,7 @@ button:disabled {
     border-radius: var(--radius-md);
     background: var(--bg-elevated);
     overflow: hidden;
-    /* Grille : avec overflow ≠ visible, min-height:auto peut tomber à 0 et clipper le panneau sous le bouton */
+    /* Grid: with overflow != visible, min-height:auto can drop to 0 and clip the panel below the button */
     min-height: min-content;
     position: relative;
     z-index: 1;
@@ -2250,7 +2250,7 @@ button:disabled {
     content: "▾ ";
 }
 
-/* Ouvert : forcer le flux bloc (évite tout conflit avec grille / flex des ancêtres) */
+/* Open: force block flow (avoids any conflict with ancestor grid / flex) */
 #templateVarsGuidePanel:not(.hidden),
 .template-vars-guide-panel:not(.hidden) {
     display: block !important;
@@ -2855,7 +2855,7 @@ button:disabled {
     background: rgba(255, 255, 255, 0.06);
 }
 
-/* Fermeture éditeur template : plus visible */
+/* Template editor close: more visible */
 .template-editor-close-btn {
     width: 44px;
     height: 44px;
@@ -2884,7 +2884,7 @@ button:disabled {
     min-width: 42px;
 }
 
-/* Toast sauvegarde template */
+/* Template save toast */
 .template-save-toast {
     position: fixed;
     bottom: 28px;
@@ -2960,7 +2960,7 @@ button:disabled {
     }
 }
 
-/* Modal template : phase infos large + phase code plein écran */
+/* Template modal: wide info phase + full-screen code phase */
 .modal-template-editor {
     max-width: min(920px, 96vw);
     width: min(920px, 96vw);
@@ -3011,7 +3011,7 @@ button:disabled {
         align-content: start;
     }
 
-    /* Ne pas sortir du flux en absolute : risque de recouvrir le <details> (clics ignorés). */
+    /* Don't leave the flow with absolute: risks covering the <details> (ignored clicks). */
     .template-editor-phase-main > input[type="hidden"] {
         display: none;
     }
@@ -3041,7 +3041,7 @@ button:disabled {
         grid-column: 1 / -1;
     }
 
-    /* Évite stretch + min-size 0 : la carte guide garde la hauteur de son contenu (bouton + panneau) */
+    /* Avoids stretch + min-size 0: the guide card keeps the height of its content (button + panel) */
     .template-editor-phase-main > .template-vars-guide {
         align-self: start;
         justify-self: stretch;
@@ -3270,7 +3270,7 @@ button:disabled {
     align-items: center;
     justify-content: center;
     padding: 16px;
-    /* Au-dessus des overlays d’extensions (autofill / antivirus) qui volent les clics */
+    /* Above extension overlays (autofill / antivirus) that steal clicks */
     z-index: 2147483000;
 }
 
@@ -3281,7 +3281,7 @@ button:disabled {
     z-index: 2147483000;
 }
 
-/* CodeMirror (éditeur HTML template) */
+/* CodeMirror (template HTML editor) */
 .template-editor-phase-code .template-codemirror-root {
     flex: 1;
     min-height: 0;
@@ -3832,7 +3832,7 @@ button:disabled {
 }
 
 /* ============================================
-   RÉSUMÉ AVANT ENVOI
+   PRE-SEND SUMMARY
    ============================================ */
 
 .send-summary-modal {
@@ -3922,7 +3922,7 @@ button:disabled {
 }
 
 /* ============================================
-   ÉDITEUR TEMPLATE — contrôles + visuel (iframe) + aperçu mobile
+   TEMPLATE EDITOR — controls + visual (iframe) + mobile preview
    ============================================ */
 
 .template-editor-code-controls {
@@ -5025,7 +5025,7 @@ textarea:focus-visible {
     background: rgba(255, 255, 255, 0.28);
 }
 
-/* Variantes : reprend la taille des inputs de formulaire */
+/* Variants: matches the size of form inputs */
 .form-group .custom-select-trigger {
     padding: 14px 16px;
     font-size: 16px;
@@ -5046,8 +5046,8 @@ textarea:focus-visible {
    OPAQUE MODALS
    ============================================ */
 
-/* --- Sidebar alignment : chaque item icône doit
-   être à la même Y que son texte correspondant. --- */
+/* --- Sidebar alignment: each icon item must
+   be at the same Y as its corresponding text. --- */
 
 .sidebar-icons {
     display: flex;
@@ -5141,7 +5141,7 @@ textarea:focus-visible {
     padding-top: 0;
 }
 
-/* --- Folder colors : restaurer la couleur réelle des dossiers --- */
+/* --- Folder colors: restore the real folder colors --- */
 
 .folder-card,
 .folder-card[data-color] {
@@ -5233,7 +5233,7 @@ textarea:focus-visible {
     background: var(--folder-color, #fff);
 }
 
-/* --- Modals : fond opaque, plus de transparence gênante --- */
+/* --- Modals: opaque background, no more distracting transparency --- */
 
 .modal-overlay {
     background: rgba(0, 0, 0, 0.78);
@@ -5358,7 +5358,7 @@ body {
     margin-top: 12px;
 }
 
-/* Cartes / panneaux qui peuvent apparaître sans padding suffisant */
+/* Cards / panels that may appear without enough padding */
 .template-form {
     padding: 24px;
     margin-top: 16px;
@@ -5446,8 +5446,8 @@ body {
     padding: 26px 28px 22px;
 }
 
-/* L’accordion ne reçoit pas de padding global (ses enfants en ont déjà)
-   mais on s’assure que le contenu ne touche jamais la bordure */
+/* The accordion gets no global padding (its children already have it)
+   but we make sure the content never touches the border */
 .accordion-body {
     padding: 4px 22px 22px;
 }
@@ -5576,7 +5576,7 @@ body {
     pointer-events: none;
 }
 
-/* Maximize / Restore : on switche l’icône selon l’état */
+/* Maximize / Restore: switch the icon based on state */
 .titlebar-icon-restore {
     display: none;
 }
@@ -5589,7 +5589,7 @@ body {
     display: block;
 }
 
-/* Le layout principal descend sous la title bar */
+/* The main layout sits below the title bar */
 .app-layout {
     top: var(--titlebar-height) !important;
     height: calc(100vh - var(--titlebar-height)) !important;
@@ -5602,7 +5602,7 @@ body {
     max-height: calc(100vh - var(--titlebar-height)) !important;
 }
 
-/* Les modales / toasts ne débordent pas sur la title bar */
+/* Modals / toasts don't overflow onto the title bar */
 .modal-overlay {
     top: var(--titlebar-height);
 }

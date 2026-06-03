@@ -11,7 +11,7 @@ const POSTMARK_API: &str = "https://api.postmarkapp.com";
 fn validate(api_key: &str) -> AppResult<()> {
     if api_key.trim().is_empty() {
         return Err(AppError::Validation(
-            "Server API Token Postmark requis".into(),
+            "Postmark Server API Token required".into(),
         ));
     }
     Ok(())
@@ -74,7 +74,7 @@ pub async fn send_email(
         let message_text = response
             .get("Message")
             .and_then(Value::as_str)
-            .unwrap_or("erreur Postmark");
+            .unwrap_or("Postmark error");
         return Err(AppError::Security(format!(
             "Postmark code {error_code}: {message_text}"
         )));
@@ -128,7 +128,7 @@ pub async fn inspect(api_key: &str) -> AppResult<Value> {
         "provider": "postmark",
         "server": server,
         "senders": senders,
-        "note": "Liste des sender signatures disponible uniquement avec un Account API Token."
+        "note": "Sender signature list only available with an Account API Token."
     }))
 }
 

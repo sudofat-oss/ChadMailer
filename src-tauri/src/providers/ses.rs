@@ -90,13 +90,13 @@ pub async fn send_email(
         .body(body)
         .send()
         .await
-        .map_err(|e| AppError::Security(format!("SES réseau: {e}")))?;
+        .map_err(|e| AppError::Security(format!("SES network: {e}")))?;
 
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| AppError::Security(format!("SES corps: {e}")))?;
+        .map_err(|e| AppError::Security(format!("SES body: {e}")))?;
     if !status.is_success() {
         return Err(AppError::Security(format!(
             "SES HTTP {}: {}",
@@ -195,7 +195,7 @@ pub async fn inspect_all_regions(
 ) -> AppResult<Value> {
     if access_key.trim().is_empty() || secret_key.trim().is_empty() {
         return Err(AppError::Validation(
-            "Access Key ID et Secret Access Key requis".into(),
+            "Access Key ID and Secret Access Key required".into(),
         ));
     }
 
@@ -278,20 +278,20 @@ pub async fn inspect_all_regions(
             "best_quota_region": best.map(|r| r["region"].clone()),
             "best_quota_label": best.map(|r| r["label"].clone()),
             "best_max_24h": best.map(|r| r["max_24h"].clone()),
-            "hint": "Liste construite par appels GetAccount parallèles sur les régions SES publiques.",
+            "hint": "List built from parallel GetAccount calls across public SES regions.",
         }
     }))
 }
 
 fn validate(access_key: &str, secret_key: &str, region: &str) -> AppResult<()> {
     if access_key.trim().is_empty() {
-        return Err(AppError::Validation("Access Key ID requis".into()));
+        return Err(AppError::Validation("Access Key ID required".into()));
     }
     if secret_key.trim().is_empty() {
-        return Err(AppError::Validation("Secret Access Key requise".into()));
+        return Err(AppError::Validation("Secret Access Key required".into()));
     }
     if region.trim().is_empty() {
-        return Err(AppError::Validation("Région SES requise".into()));
+        return Err(AppError::Validation("SES region required".into()));
     }
     Ok(())
 }

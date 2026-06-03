@@ -10,7 +10,7 @@ const MANDRILL_API: &str = "https://mandrillapp.com/api/1.0";
 
 fn validate(api_key: &str) -> AppResult<()> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API Mandrill requise".into()));
+        return Err(AppError::Validation("Mandrill API key required".into()));
     }
     Ok(())
 }
@@ -51,9 +51,9 @@ pub async fn send_email(
             .and_then(|arr| arr.first())
             .and_then(|first| first.get("reject_reason"))
             .and_then(Value::as_str)
-            .unwrap_or("raison inconnue");
+            .unwrap_or("unknown reason");
         return Err(AppError::Security(format!(
-            "Mandrill a refusé le message: {status} ({reason})"
+            "Mandrill rejected the message: {status} ({reason})"
         )));
     }
 

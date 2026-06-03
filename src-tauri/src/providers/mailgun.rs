@@ -44,13 +44,13 @@ pub async fn send_email(
         .form(&form)
         .send()
         .await
-        .map_err(|e| AppError::Security(format!("Mailgun réseau: {e}")))?;
+        .map_err(|e| AppError::Security(format!("Mailgun network: {e}")))?;
 
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| AppError::Security(format!("Mailgun corps: {e}")))?;
+        .map_err(|e| AppError::Security(format!("Mailgun body: {e}")))?;
     if !status.is_success() {
         return Err(AppError::Security(format!(
             "Mailgun HTTP {}: {}",
@@ -79,11 +79,11 @@ pub(crate) fn base_url(region: &str) -> &'static str {
 
 fn validate(api_key: &str, domain: &str) -> AppResult<()> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API Mailgun requise".into()));
+        return Err(AppError::Validation("Mailgun API key required".into()));
     }
     if domain.trim().is_empty() {
         return Err(AppError::Validation(
-            "Domaine d'envoi Mailgun requis (ex. mg.exemple.com)".into(),
+            "Mailgun sending domain required (e.g. mg.example.com)".into(),
         ));
     }
     Ok(())
@@ -173,8 +173,8 @@ pub(crate) fn parse_verified_senders(info: &Value, domain: &str) -> Vec<Value> {
     vec![json!({
         "email": format!("noreply@{domain}"),
         "name": "",
-        "label": format!("@{domain} (domaine vérifié)"),
-        "hint": "Mailgun autorise n'importe quelle adresse sur un domaine vérifié."
+        "label": format!("@{domain} (verified domain)"),
+        "hint": "Mailgun allows any address on a verified domain."
     })]
 }
 

@@ -34,7 +34,7 @@
 
     const appWindow = getCurrentWindow();
     if (!appWindow) {
-      // pas dans Tauri : on cache la titlebar pour éviter une barre morte
+      // not running in Tauri: hide the titlebar to avoid a dead bar
       titlebar.classList.add("hidden");
       document.documentElement.style.setProperty("--titlebar-height", "0px");
       return;

@@ -37,19 +37,19 @@ pub struct SendResult {
 impl EmailMessage {
     pub fn validate(&self) -> Result<(), String> {
         if self.from_email.trim().is_empty() {
-            return Err("Adresse From requise".to_string());
+            return Err("From address required".to_string());
         }
         if !self.from_email.contains('@') {
-            return Err(format!("Adresse From invalide: {}", self.from_email));
+            return Err(format!("Invalid From address: {}", self.from_email));
         }
         if self.to_email.trim().is_empty() {
-            return Err("Adresse To requise".to_string());
+            return Err("To address required".to_string());
         }
         if !self.to_email.contains('@') {
-            return Err(format!("Adresse To invalide: {}", self.to_email));
+            return Err(format!("Invalid To address: {}", self.to_email));
         }
         if self.subject.trim().is_empty() {
-            return Err("Sujet requis".to_string());
+            return Err("Subject required".to_string());
         }
         let has_html = self
             .html
@@ -62,7 +62,7 @@ impl EmailMessage {
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false);
         if !has_html && !has_text {
-            return Err("Au moins un contenu HTML ou texte est requis".to_string());
+            return Err("At least one of HTML or text content is required".to_string());
         }
         Ok(())
     }

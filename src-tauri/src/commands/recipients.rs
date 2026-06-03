@@ -39,7 +39,7 @@ pub async fn parse_file(
         "txt" => parse_txt(path).await,
         "csv" => parse_csv(path, mapping_map.as_ref()).await,
         other => Err(AppError::Validation(format!(
-            "Type de fichier non supporté: {other}"
+            "Unsupported file type: {other}"
         ))),
     }
 }
@@ -52,10 +52,10 @@ pub async fn save_upload(
     bytes: Vec<u8>,
 ) -> Result<ApiResponse<Value>, AppError> {
     if filename.trim().is_empty() {
-        return Ok(ApiResponse::err("Nom de fichier manquant"));
+        return Ok(ApiResponse::err("Missing filename"));
     }
     if bytes.is_empty() {
-        return Ok(ApiResponse::err("Fichier vide"));
+        return Ok(ApiResponse::err("Empty file"));
     }
 
     storage::ensure_dir(&state.paths.uploads_dir).await?;
@@ -331,14 +331,14 @@ mod tests {
     async fn parse_csv_explicit_mapping_supports_custom_variables() {
         let path = tmp_file(
             "recipients2.csv",
-            "Adresse,Prénom,Société\nalice@example.com,Alice,Acme\n",
+            "Address,FirstName,Company\nalice@example.com,Alice,Acme\n",
         );
         let mapping: HashMap<String, Value> = HashMap::from([
-            ("email".to_string(), serde_json::json!("Adresse")),
-            ("first_name".to_string(), serde_json::json!("Prénom")),
+            ("email".to_string(), serde_json::json!("Address")),
+            ("first_name".to_string(), serde_json::json!("FirstName")),
             (
                 "custom_variables".to_string(),
-                serde_json::json!({ "company": "Société" }),
+                serde_json::json!({ "company": "Company" }),
             ),
         ]);
         let out = parse_csv(&path, Some(&mapping)).await.expect("parse ok");
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn normalize_variable_name_keeps_alphanumeric_only() {
-        assert_eq!(normalize_variable_name("Société"), "soci_t");
+        assert_eq!(normalize_variable_name("R&D"), "r_d");
         assert_eq!(normalize_variable_name("  name 1 "), "name_1");
         assert_eq!(normalize_variable_name("___"), "");
     }

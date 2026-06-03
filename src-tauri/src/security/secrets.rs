@@ -79,7 +79,7 @@ fn apply_restricted_permissions(_path: &Path) {
 fn master_key() -> AppResult<&'static [u8; 32]> {
     MASTER_KEY
         .get()
-        .ok_or_else(|| AppError::Security("clé maîtresse non initialisée".to_string()))
+        .ok_or_else(|| AppError::Security("master key not initialised".to_string()))
 }
 
 /// Encrypts a UTF-8 string with AES-256-GCM. Empty strings and values that are
@@ -93,7 +93,7 @@ pub fn encrypt(plaintext: &str) -> AppResult<String> {
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
-        .map_err(|e| AppError::Security(format!("chiffrement: {e}")))?;
+        .map_err(|e| AppError::Security(format!("encryption: {e}")))?;
     let mut combined = Vec::with_capacity(nonce.len() + ciphertext.len());
     combined.extend_from_slice(nonce.as_slice());
     combined.extend_from_slice(&ciphertext);
@@ -112,7 +112,7 @@ pub fn decrypt(value: &str) -> AppResult<String> {
         .decode(payload)
         .map_err(|e| AppError::Security(format!("base64: {e}")))?;
     if combined.len() < 12 {
-        return Err(AppError::Security("payload chiffré invalide".to_string()));
+        return Err(AppError::Security("invalid encrypted payload".to_string()));
     }
     let (nonce_bytes, ciphertext) = combined.split_at(12);
     let key_bytes = master_key()?;
@@ -120,6 +120,6 @@ pub fn decrypt(value: &str) -> AppResult<String> {
     let nonce = Nonce::from_slice(nonce_bytes);
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| AppError::Security(format!("déchiffrement: {e}")))?;
+        .map_err(|e| AppError::Security(format!("decryption: {e}")))?;
     String::from_utf8(plaintext).map_err(|e| AppError::Security(format!("utf-8: {e}")))
 }

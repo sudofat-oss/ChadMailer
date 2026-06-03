@@ -56,7 +56,7 @@ pub async fn campaigns_list_or_create(
             Ok(ApiResponse::ok(json!(campaigns)))
         }
         "POST" => campaign_create(state, data).await,
-        _ => Ok(ApiResponse::err("Méthode campaigns non supportée")),
+        _ => Ok(ApiResponse::err("Unsupported method for campaigns")),
     }
 }
 
@@ -68,7 +68,7 @@ pub async fn campaign_get_update_delete(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID campagne manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing campaign id".to_string()))?;
     match method {
         "GET" => {
             let mut campaign = load_campaign(state, id)
@@ -94,7 +94,7 @@ pub async fn campaign_get_update_delete(
             storage::remove_file_if_exists(&log_path).await?;
             Ok(ApiResponse::<Value>::empty_ok())
         }
-        _ => Ok(ApiResponse::err("Méthode campaign non supportée")),
+        _ => Ok(ApiResponse::err("Unsupported method for campaign")),
     }
 }
 
@@ -104,7 +104,7 @@ pub async fn campaign_logs(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID campagne manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing campaign id".to_string()))?;
     let logs = load_campaign_logs(state, id).await?;
     Ok(ApiResponse::ok(json!(logs)))
 }
@@ -118,7 +118,7 @@ pub async fn campaign_control(
     let id = data
         .get("campaign_id")
         .and_then(Value::as_str)
-        .ok_or_else(|| AppError::Validation("ID campagne manquant".to_string()))?
+        .ok_or_else(|| AppError::Validation("Missing campaign id".to_string()))?
         .to_string();
 
     // Ensure campaign exists
@@ -145,7 +145,7 @@ pub async fn campaign_control(
             engine.stop(&id).await?;
             mark_status(state, &id, "stopped").await?;
         }
-        _ => return Ok(ApiResponse::err("Action campagne non supportée")),
+        _ => return Ok(ApiResponse::err("Unsupported campaign action")),
     }
 
     Ok(ApiResponse::ok(json!({ "campaign_id": id })))
@@ -185,7 +185,7 @@ async fn campaign_create(
 ) -> AppResult<ApiResponse<Value>> {
     let payload: CampaignSavePayload = serde_json::from_value(data)?;
     if payload.name.trim().is_empty() {
-        return Ok(ApiResponse::err("Le nom de campagne est requis"));
+        return Ok(ApiResponse::err("Campaign name is required"));
     }
     let total = payload
         .config

@@ -1,1 +1,1 @@
-// Domaine destinataires : parsing, validation et import seront progressivement déplacés ici.
+// Recipients domain: parsing, validation and import will progressively be moved here.

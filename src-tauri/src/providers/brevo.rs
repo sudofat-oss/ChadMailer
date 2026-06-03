@@ -15,7 +15,7 @@ pub async fn send_email(
 ) -> AppResult<SendResult> {
     let api_key = cfg.api_key.trim();
     if api_key.is_empty() {
-        return Err(AppError::Validation("Clé API Brevo requise".into()));
+        return Err(AppError::Validation("Brevo API key required".into()));
     }
     let mut payload = json!({
         "sender": {
@@ -71,7 +71,7 @@ pub async fn send_email(
 
 pub async fn ping(api_key: &str) -> AppResult<Value> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API Brevo requise".into()));
+        return Err(AppError::Validation("Brevo API key required".into()));
     }
     let account = json_response(
         HTTP_CLIENT
@@ -85,7 +85,7 @@ pub async fn ping(api_key: &str) -> AppResult<Value> {
 
 pub async fn inspect(api_key: &str) -> AppResult<Value> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API Brevo requise".into()));
+        return Err(AppError::Validation("Brevo API key required".into()));
     }
 
     let account = json_response(

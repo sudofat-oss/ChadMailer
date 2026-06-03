@@ -64,7 +64,7 @@ pub async fn smtp_configs(
             Ok(ApiResponse::ok(json!(configs)))
         }
         "POST" => save_config(state, data).await,
-        _ => Ok(ApiResponse::err("Méthode smtp_configs non supportée")),
+        _ => Ok(ApiResponse::err("Unsupported smtp_configs method")),
     }
 }
 
@@ -75,7 +75,7 @@ pub async fn smtp_config(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID configuration manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing configuration ID".to_string()))?;
     match method {
         "GET" => {
             let mut cfg = load_config(&state.paths, id)
@@ -92,7 +92,7 @@ pub async fn smtp_config(
             storage::remove_file_if_exists(&path).await?;
             Ok(ApiResponse::<Value>::empty_ok())
         }
-        _ => Ok(ApiResponse::err("Méthode smtp_config non supportée")),
+        _ => Ok(ApiResponse::err("Unsupported smtp_config method")),
     }
 }
 
@@ -100,7 +100,7 @@ pub async fn test_smtp(state: &State<'_, AppState>, data: Value) -> AppResult<Ap
     let cfg = resolve_config_for_action(state, &data).await?;
     let Some(cfg) = cfg else {
         return Ok(ApiResponse::err(
-            "Configuration SMTP/API introuvable ou incomplète",
+            "SMTP/API configuration not found or incomplete",
         ));
     };
 
@@ -129,7 +129,7 @@ pub async fn test_smtp(state: &State<'_, AppState>, data: Value) -> AppResult<Ap
         "smtp" | "office365" => crate::mailer::smtp::test_connection(&cfg).await,
         other => {
             return Ok(ApiResponse::err(format!(
-                "Provider « {other} » non supporté"
+                "Unsupported provider \"{other}\""
             )))
         }
     };
@@ -203,7 +203,7 @@ pub async fn provider_inspect(
 ) -> AppResult<ApiResponse<Value>> {
     let cfg = resolve_config_for_action(state, &data).await?;
     let Some(cfg) = cfg else {
-        return Ok(ApiResponse::err("Configuration introuvable"));
+        return Ok(ApiResponse::err("Configuration not found"));
     };
     let provider = cfg.provider.to_ascii_lowercase();
     let region_opt = if cfg.sendgrid_region.is_empty() {
@@ -226,7 +226,7 @@ pub async fn provider_inspect(
         "smtp" | "office365" => crate::mailer::smtp::test_connection(&cfg).await,
         other => {
             return Ok(ApiResponse::err(format!(
-                "Introspection non disponible pour le provider « {other} »"
+                "Introspection not available for provider \"{other}\""
             )))
         }
     };
@@ -256,10 +256,10 @@ pub async fn ses_inspect(
 ) -> AppResult<ApiResponse<Value>> {
     let cfg = resolve_config_for_action(state, &data).await?;
     let Some(cfg) = cfg else {
-        return Ok(ApiResponse::err("Configuration SES introuvable"));
+        return Ok(ApiResponse::err("SES configuration not found"));
     };
     if !matches!(cfg.provider.as_str(), "ses" | "amazonses") {
-        return Ok(ApiResponse::err("Cet endpoint est réservé à Amazon SES"));
+        return Ok(ApiResponse::err("This endpoint is reserved for Amazon SES"));
     }
 
     let probe_all = data
@@ -290,10 +290,10 @@ pub async fn sendgrid_activity(
 ) -> AppResult<ApiResponse<Value>> {
     let cfg = resolve_config_for_action(state, &data).await?;
     let Some(cfg) = cfg else {
-        return Ok(ApiResponse::err("Configuration SendGrid introuvable"));
+        return Ok(ApiResponse::err("SendGrid configuration not found"));
     };
     if cfg.provider != "sendgrid" {
-        return Ok(ApiResponse::err("Cet endpoint est réservé à SendGrid"));
+        return Ok(ApiResponse::err("This endpoint is reserved for SendGrid"));
     }
 
     let limit = data.get("limit").and_then(Value::as_u64).unwrap_or(25) as u32;
@@ -332,7 +332,7 @@ pub async fn send_test_email(
 ) -> AppResult<ApiResponse<Value>> {
     let cfg = resolve_config_for_action(state, &data).await?;
     let Some(cfg) = cfg else {
-        return Ok(ApiResponse::err("Configuration SMTP/API introuvable"));
+        return Ok(ApiResponse::err("SMTP/API configuration not found"));
     };
 
     let to = data
@@ -342,7 +342,7 @@ pub async fn send_test_email(
         .trim()
         .to_string();
     if to.is_empty() {
-        return Ok(ApiResponse::err("Destinataire requis"));
+        return Ok(ApiResponse::err("Recipient required"));
     }
     let from_email = data
         .get("from_email")
@@ -351,7 +351,7 @@ pub async fn send_test_email(
         .trim()
         .to_string();
     if from_email.is_empty() {
-        return Ok(ApiResponse::err("Adresse From requise"));
+        return Ok(ApiResponse::err("From address required"));
     }
     let from_name = data
         .get("from_name")
@@ -431,7 +431,7 @@ pub async fn send_test_email(
         Ok(result) => Ok(ApiResponse::ok(json!({
             "provider": result.provider,
             "message_id": result.message_id,
-            "message": format!("Email envoyé à {to}"),
+            "message": format!("Email sent to {to}"),
         }))),
         Err(e) => Ok(ApiResponse::err(e.to_string())),
     }
@@ -440,7 +440,7 @@ pub async fn send_test_email(
 async fn save_config(state: &State<'_, AppState>, data: Value) -> AppResult<ApiResponse<Value>> {
     let mut incoming: ProviderConfig = serde_json::from_value(data)?;
     if incoming.name.trim().is_empty() {
-        return Ok(ApiResponse::err("Le nom de la configuration est requis"));
+        return Ok(ApiResponse::err("Configuration name is required"));
     }
     if incoming.provider.trim().is_empty() {
         incoming.provider = "smtp".to_string();
@@ -469,12 +469,12 @@ async fn save_config(state: &State<'_, AppState>, data: Value) -> AppResult<ApiR
         return Ok(ApiResponse::err(message));
     }
 
-    // Chiffrement des secrets avant écriture disque. Idempotent : les valeurs
-    // déjà chiffrées (cas du preserve_secret_if_masked) restent telles quelles.
+    // Encrypt secrets before writing to disk. Idempotent: values already
+    // encrypted (preserve_secret_if_masked case) remain as-is.
     incoming.api_key = secrets::encrypt(&incoming.api_key)?;
     incoming.password = secrets::encrypt(&incoming.password)?;
     incoming.secret_key = secrets::encrypt(&incoming.secret_key)?;
-    // access_key (AKIA…) reste en clair : seule, elle ne permet pas d’envoyer.
+    // access_key (AKIA...) stays in plaintext: on its own it cannot send.
 
     incoming.updated_at = now_local_string();
     let id = incoming.id.clone();
@@ -575,46 +575,46 @@ fn validate_provider_config(
     match config.provider.as_str() {
         "smtp" | "office365" => {
             if config.host.trim().is_empty() {
-                return Err("Host SMTP requis".to_string());
+                return Err("SMTP host required".to_string());
             }
             if is_empty_json_number_or_string(&config.port) {
-                return Err("Port SMTP requis".to_string());
+                return Err("SMTP port required".to_string());
             }
             if config.username.trim().is_empty() {
-                return Err("Utilisateur SMTP requis".to_string());
+                return Err("SMTP username required".to_string());
             }
             if !allow_missing_secret_on_saved && config.password.trim().is_empty() {
-                return Err("Mot de passe SMTP requis".to_string());
+                return Err("SMTP password required".to_string());
             }
         }
         "ses" => {
             if config.access_key.trim().is_empty() {
-                return Err("Amazon SES : Access Key ID requis".to_string());
+                return Err("Amazon SES: Access Key ID required".to_string());
             }
             if !allow_missing_secret_on_saved && config.secret_key.trim().is_empty() {
-                return Err("Amazon SES : Secret Access Key requis".to_string());
+                return Err("Amazon SES: Secret Access Key required".to_string());
             }
         }
         "mailgun" => {
             if !allow_missing_secret_on_saved && config.api_key.trim().is_empty() {
-                return Err("Mailgun : clé API requise".to_string());
+                return Err("Mailgun: API key required".to_string());
             }
             if config.domain.trim().is_empty() {
-                return Err("Mailgun : domaine d'envoi requis (ex. mg.exemple.com)".to_string());
+                return Err("Mailgun: sending domain required (e.g. mg.example.com)".to_string());
             }
         }
         "brevo" | "sendgrid" | "mandrill" | "postmark" => {
             if !allow_missing_secret_on_saved && config.api_key.trim().is_empty() {
-                return Err("Clé API requise".to_string());
+                return Err("API key required".to_string());
             }
         }
-        other => return Err(format!("Provider non supporté: {other}")),
+        other => return Err(format!("Unsupported provider: {other}")),
     }
     Ok(())
 }
 
-/// Masque les secrets réels sortants vers l’UI. La clé d’accès AWS (AKIA…)
-/// reste en clair car elle est inutile sans la clé secrète associée.
+/// Masks real outgoing secrets sent to the UI. The AWS access key (AKIA...)
+/// stays in plaintext because it is useless without the associated secret key.
 fn mask_secrets_for_ui(config: &mut ProviderConfig) {
     if !config.api_key.trim().is_empty() {
         config.api_key = "***".to_string();

@@ -30,7 +30,7 @@ pub async fn dns_check(data: Value) -> AppResult<ApiResponse<Value>> {
         .to_ascii_lowercase();
     let selector = payload.selector.trim();
     if domain.is_empty() {
-        return Ok(ApiResponse::err("Domaine manquant"));
+        return Ok(ApiResponse::err("Missing domain"));
     }
 
     let resolver = Resolver::builder_tokio()
@@ -72,16 +72,16 @@ async fn check_spf(resolver: &TokioResolver, domain: &str) -> Value {
                         txt.contains("spf.brevo.com") || txt.contains("spf.sendinblue.com");
                     return json!({
                         "status": "found",
-                        "message": if has_brevo { "SPF présent et inclut Brevo ✓" } else { "SPF présent mais Brevo non inclus" },
+                        "message": if has_brevo { "SPF present and includes Brevo ✓" } else { "SPF present but Brevo not included" },
                         "value": txt,
                         "has_brevo": has_brevo
                     });
                 }
             }
-            json!({ "status": "missing", "message": "Enregistrement SPF non trouvé", "value": null })
+            json!({ "status": "missing", "message": "SPF record not found", "value": null })
         }
         Err(e) => {
-            json!({ "status": "error", "message": format!("Impossible de résoudre {domain}: {e}"), "value": null })
+            json!({ "status": "error", "message": format!("Could not resolve {domain}: {e}"), "value": null })
         }
     }
 }
@@ -102,13 +102,13 @@ async fn check_dkim(resolver: &TokioResolver, domain: &str, selector: &str) -> V
                     } else {
                         txt.clone()
                     };
-                    return json!({ "status": "found", "message": "DKIM présent ✓", "value": value });
+                    return json!({ "status": "found", "message": "DKIM present ✓", "value": value });
                 }
             }
-            json!({ "status": "missing", "message": "DKIM non trouvé (format invalide)", "value": null })
+            json!({ "status": "missing", "message": "DKIM not found (invalid format)", "value": null })
         }
         Err(_) => {
-            json!({ "status": "missing", "message": format!("DKIM non trouvé sur {host}"), "value": null })
+            json!({ "status": "missing", "message": format!("DKIM not found on {host}"), "value": null })
         }
     }
 }
@@ -125,14 +125,14 @@ async fn check_dmarc(resolver: &TokioResolver, domain: &str) -> Value {
                         .unwrap_or_else(|| "none".to_string());
                     return json!({
                         "status": "found",
-                        "message": format!("DMARC présent, politique : p={policy} ✓"),
+                        "message": format!("DMARC present, policy: p={policy} ✓"),
                         "value": txt,
                         "policy": policy
                     });
                 }
             }
-            json!({ "status": "missing", "message": "DMARC non trouvé (format invalide)", "value": null })
+            json!({ "status": "missing", "message": "DMARC not found (invalid format)", "value": null })
         }
-        Err(_) => json!({ "status": "missing", "message": "DMARC non trouvé", "value": null }),
+        Err(_) => json!({ "status": "missing", "message": "DMARC not found", "value": null }),
     }
 }

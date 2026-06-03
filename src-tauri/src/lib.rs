@@ -35,7 +35,7 @@ pub fn run() {
             std::fs::create_dir_all(&paths.provider_configs_dir)?;
             std::fs::create_dir_all(&paths.logs_dir)?;
             if let Err(err) = security::secrets::initialize(&paths.data_dir) {
-                tracing::error!("chiffrement non disponible: {err}");
+                tracing::error!("encryption unavailable: {err}");
             }
             app.manage(AppState::new(paths));
             Ok(())

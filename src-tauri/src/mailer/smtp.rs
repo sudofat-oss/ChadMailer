@@ -5,7 +5,7 @@ use lettre::message::{Mailbox, Message, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
-/// Header `List-Unsubscribe` selon RFC 8058 (one-click unsubscribe).
+/// RFC 8058 List-Unsubscribe header (one-click unsubscribe).
 #[derive(Clone)]
 pub(crate) struct ListUnsubscribe(pub String);
 
@@ -21,7 +21,7 @@ impl Header for ListUnsubscribe {
     }
 }
 
-/// Header `List-Unsubscribe-Post` qui déclenche le one-click chez Gmail/Yahoo.
+/// `List-Unsubscribe-Post` header that enables one-click in Gmail/Yahoo.
 #[derive(Clone)]
 pub(crate) struct ListUnsubscribePost(pub String);
 
@@ -61,7 +61,7 @@ pub async fn send_via(
     let response = transport
         .send(email)
         .await
-        .map_err(|e| AppError::Validation(format!("Envoi SMTP: {e}")))?;
+        .map_err(|e| AppError::Validation(format!("SMTP send: {e}")))?;
 
     Ok(SendResult {
         provider: cfg.provider.clone(),
@@ -104,10 +104,9 @@ pub(crate) fn build_lettre_message(message: &EmailMessage) -> AppResult<Message>
             "List-Unsubscribe=One-Click".to_string(),
         ));
     }
-    // Note : les headers personnalisés additionnels ne sont pas injectés en SMTP
-    // brut (lettre exige des types Header typés). Pour les besoins avancés,
-    // passez par un provider API (Brevo/SendGrid/SES) qui les transmet sans
-    // restriction.
+    // Note: additional custom headers are not injected over raw SMTP (lettre
+    // requires typed Header types). For advanced needs, use an API provider
+    // (Brevo/SendGrid/SES) that forwards them without restriction.
 
     let body = build_body(message)?;
     builder
@@ -120,16 +119,16 @@ pub(crate) fn build_lettre_message(message: &EmailMessage) -> AppResult<Message>
 pub fn build_transport_for(cfg: &ProviderConfig) -> AppResult<AsyncSmtpTransport<Tokio1Executor>> {
     let host = cfg.host.trim();
     if host.is_empty() {
-        return Err(AppError::Validation("Host SMTP requis".into()));
+        return Err(AppError::Validation("SMTP host required".into()));
     }
     let port = extract_port(cfg)?;
     let username = cfg.username.trim();
     if username.is_empty() {
-        return Err(AppError::Validation("Utilisateur SMTP requis".into()));
+        return Err(AppError::Validation("SMTP username required".into()));
     }
     let password = cfg.password.trim();
     if password.is_empty() {
-        return Err(AppError::Validation("Mot de passe SMTP requis".into()));
+        return Err(AppError::Validation("SMTP password required".into()));
     }
     build_transport(cfg, host, port, username, password)
 }
@@ -166,14 +165,14 @@ pub async fn test_connection(cfg: &ProviderConfig) -> AppResult<serde_json::Valu
     let ok = transport
         .test_connection()
         .await
-        .map_err(|e| AppError::Validation(format!("Connexion SMTP: {e}")))?;
+        .map_err(|e| AppError::Validation(format!("SMTP connection: {e}")))?;
     Ok(serde_json::json!({
         "provider": cfg.provider,
         "host": cfg.host.trim(),
         "port": extract_port(cfg).ok(),
         "encryption": cfg.encryption,
         "authenticated": ok,
-        "message": if ok { "Connexion SMTP/AUTH OK" } else { "Connexion SMTP impossible" }
+        "message": if ok { "SMTP/AUTH connection OK" } else { "SMTP connection failed" }
     }))
 }
 
@@ -185,14 +184,14 @@ pub(crate) fn extract_port(cfg: &ProviderConfig) -> AppResult<u16> {
         _ => None,
     };
     port.filter(|p| *p > 0)
-        .ok_or_else(|| AppError::Validation("Port SMTP requis".into()))
+        .ok_or_else(|| AppError::Validation("SMTP port required".into()))
 }
 
 fn parse_mailbox(email: &str, name: Option<&str>) -> AppResult<Mailbox> {
     let address: Address = email
         .trim()
         .parse()
-        .map_err(|e| AppError::Validation(format!("Adresse invalide '{email}': {e}")))?;
+        .map_err(|e| AppError::Validation(format!("Invalid address '{email}': {e}")))?;
     let display = name
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -241,7 +240,7 @@ fn build_body(message: &EmailMessage) -> AppResult<MultiPart> {
         ))
     } else {
         Err(AppError::Validation(
-            "Corps vide : ni HTML ni texte fourni".into(),
+            "Empty body: neither HTML nor text provided".into(),
         ))
     }
 }

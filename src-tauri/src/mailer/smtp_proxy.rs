@@ -51,16 +51,16 @@ pub async fn send(
     //    socket — we want fast feedback for empty fields.
     let host = cfg.host.trim();
     if host.is_empty() {
-        return Err(AppError::Validation("Host SMTP requis".into()));
+        return Err(AppError::Validation("SMTP host required".into()));
     }
     let port = crate::mailer::smtp::extract_port(cfg)?;
     let username = cfg.username.trim();
     if username.is_empty() {
-        return Err(AppError::Validation("Utilisateur SMTP requis".into()));
+        return Err(AppError::Validation("SMTP username required".into()));
     }
     let password = cfg.password.trim();
     if password.is_empty() {
-        return Err(AppError::Validation("Mot de passe SMTP requis".into()));
+        return Err(AppError::Validation("SMTP password required".into()));
     }
 
     // 2. Build the lettre Message → envelope (RFC 5321 addresses) + raw MIME
@@ -108,14 +108,14 @@ async fn connect_through_proxy(
     target_port: u16,
 ) -> AppResult<BoxedStream> {
     let url = url::Url::parse(&proxy.url)
-        .map_err(|e| AppError::Validation(format!("URL proxy invalide: {e}")))?;
+        .map_err(|e| AppError::Validation(format!("invalid proxy URL: {e}")))?;
     let proxy_host = url
         .host_str()
-        .ok_or_else(|| AppError::Validation("proxy sans hôte".into()))?
+        .ok_or_else(|| AppError::Validation("proxy without host".into()))?
         .to_string();
     let proxy_port = url
         .port_or_known_default()
-        .ok_or_else(|| AppError::Validation("proxy sans port".into()))?;
+        .ok_or_else(|| AppError::Validation("proxy without port".into()))?;
     let user = url.username().to_string();
     let pass = url.password().unwrap_or("").to_string();
 
@@ -151,7 +151,7 @@ async fn connect_through_proxy(
             Ok(Box::new(stream))
         }
         other => Err(AppError::Validation(format!(
-            "Schéma proxy non supporté pour SMTP: {other}"
+            "proxy scheme not supported for SMTP: {other}"
         ))),
     }
 }
@@ -171,8 +171,8 @@ async fn http_connect(
         TcpStream::connect((proxy_host, proxy_port)),
     )
     .await
-    .map_err(|_| AppError::Security("timeout connect proxy".into()))?
-    .map_err(|e| AppError::Security(format!("connect proxy: {e}")))?;
+    .map_err(|_| AppError::Security("proxy connect timeout".into()))?
+    .map_err(|e| AppError::Security(format!("proxy connect: {e}")))?;
     let _ = stream.set_nodelay(true);
 
     let mut req = format!("CONNECT {target_host}:{target_port} HTTP/1.1\r\n");
@@ -188,7 +188,7 @@ async fn http_connect(
         let inner = reader.get_mut();
         timeout(Duration::from_secs(30), inner.write_all(req.as_bytes()))
             .await
-            .map_err(|_| AppError::Security("timeout CONNECT write".into()))?
+            .map_err(|_| AppError::Security("CONNECT write timeout".into()))?
             .map_err(|e| AppError::Security(format!("CONNECT write: {e}")))?;
         inner
             .flush()
@@ -199,11 +199,11 @@ async fn http_connect(
     let mut status = String::new();
     timeout(Duration::from_secs(30), reader.read_line(&mut status))
         .await
-        .map_err(|_| AppError::Security("timeout CONNECT response".into()))?
+        .map_err(|_| AppError::Security("CONNECT response timeout".into()))?
         .map_err(|e| AppError::Security(format!("CONNECT read: {e}")))?;
     if !status.contains(" 200 ") {
         return Err(AppError::Security(format!(
-            "Proxy CONNECT refusé: {}",
+            "proxy CONNECT refused: {}",
             status.trim()
         )));
     }
@@ -212,7 +212,7 @@ async fn http_connect(
         let mut line = String::new();
         let n = timeout(Duration::from_secs(30), reader.read_line(&mut line))
             .await
-            .map_err(|_| AppError::Security("timeout CONNECT headers".into()))?
+            .map_err(|_| AppError::Security("CONNECT headers timeout".into()))?
             .map_err(|e| AppError::Security(format!("CONNECT header: {e}")))?;
         if n == 0 || matches!(line.as_str(), "\r\n" | "\n") {
             break;
@@ -247,10 +247,10 @@ where
 {
     let connector = TlsConnector::from(tls_config()?);
     let server_name = ServerName::try_from(host.to_string())
-        .map_err(|e| AppError::Validation(format!("nom de serveur TLS invalide: {e}")))?;
+        .map_err(|e| AppError::Validation(format!("invalid TLS server name: {e}")))?;
     timeout(STEP_TIMEOUT, connector.connect(server_name, stream))
         .await
-        .map_err(|_| AppError::Security("timeout TLS handshake".into()))?
+        .map_err(|_| AppError::Security("TLS handshake timeout".into()))?
         .map_err(|e| AppError::Security(format!("TLS handshake: {e}")))
 }
 
@@ -281,7 +281,7 @@ async fn run_session(
     let (_code, ehlo_response) = conn.read_response().await?;
     if !ehlo_response.starts_with('2') {
         return Err(AppError::Security(format!(
-            "EHLO refusé: {}",
+            "EHLO refused: {}",
             ehlo_response.trim()
         )));
     }
@@ -298,7 +298,7 @@ async fn run_session(
             let (_code, response) = tls_conn.read_response().await?;
             if !response.starts_with('2') {
                 return Err(AppError::Security(format!(
-                    "EHLO post-TLS refusé: {}",
+                    "post-TLS EHLO refused: {}",
                     response.trim()
                 )));
             }
@@ -329,7 +329,7 @@ async fn run_session(
     conn.write_command("DATA").await?;
     let (code, _) = conn.read_response().await?;
     if code != 354 {
-        return Err(AppError::Security(format!("DATA refusé ({code})")));
+        return Err(AppError::Security(format!("DATA refused ({code})")));
     }
     let payload = dot_stuff_and_terminate(raw_body);
     conn.write_bytes(&payload).await?;
@@ -372,14 +372,14 @@ async fn authenticate(
         conn.write_command("AUTH LOGIN").await?;
         let (code, _) = conn.read_response().await?;
         if code != 334 {
-            return Err(AppError::Security(format!("AUTH LOGIN refusé ({code})")));
+            return Err(AppError::Security(format!("AUTH LOGIN refused ({code})")));
         }
         conn.write_command(&general_purpose::STANDARD.encode(username))
             .await?;
         let (code, _) = conn.read_response().await?;
         if code != 334 {
             return Err(AppError::Security(format!(
-                "AUTH LOGIN: username refusé ({code})"
+                "AUTH LOGIN: username refused ({code})"
             )));
         }
         conn.write_command(&general_purpose::STANDARD.encode(password))
@@ -387,7 +387,7 @@ async fn authenticate(
         let (code, response) = conn.read_response().await?;
         if code != 235 {
             return Err(AppError::Security(format!(
-                "AUTH LOGIN: échec ({code}): {}",
+                "AUTH LOGIN failed ({code}): {}",
                 response.trim()
             )));
         }
@@ -398,14 +398,14 @@ async fn authenticate(
         let (code, response) = conn.read_response().await?;
         if code != 235 {
             return Err(AppError::Security(format!(
-                "AUTH PLAIN: échec ({code}): {}",
+                "AUTH PLAIN failed ({code}): {}",
                 response.trim()
             )));
         }
         Ok(())
     } else {
         Err(AppError::Security(
-            "Aucune méthode AUTH compatible annoncée par le serveur (LOGIN/PLAIN)".into(),
+            "server advertised no compatible AUTH method (LOGIN/PLAIN)".into(),
         ))
     }
 }
@@ -440,7 +440,7 @@ impl SmtpConn {
             Ok::<_, std::io::Error>(())
         })
         .await
-        .map_err(|_| AppError::Security("timeout SMTP write".into()))?
+        .map_err(|_| AppError::Security("SMTP write timeout".into()))?
         .map_err(|e| AppError::Security(format!("SMTP write: {e}")))
     }
 
@@ -452,7 +452,7 @@ impl SmtpConn {
             Ok::<_, std::io::Error>(())
         })
         .await
-        .map_err(|_| AppError::Security("timeout SMTP DATA write".into()))?
+        .map_err(|_| AppError::Security("SMTP DATA write timeout".into()))?
         .map_err(|e| AppError::Security(format!("SMTP DATA write: {e}")))
     }
 
@@ -463,20 +463,20 @@ impl SmtpConn {
             let mut line = String::new();
             let n = timeout(STEP_TIMEOUT, self.reader.read_line(&mut line))
                 .await
-                .map_err(|_| AppError::Security("timeout SMTP read".into()))?
+                .map_err(|_| AppError::Security("SMTP read timeout".into()))?
                 .map_err(|e| AppError::Security(format!("SMTP read: {e}")))?;
             if n == 0 {
-                return Err(AppError::Security("connexion SMTP fermée".into()));
+                return Err(AppError::Security("SMTP connection closed".into()));
             }
             if line.len() < 4 {
                 return Err(AppError::Security(format!(
-                    "ligne SMTP invalide: {}",
+                    "invalid SMTP line: {}",
                     line.trim()
                 )));
             }
             let parsed = line[..3]
                 .parse::<u16>()
-                .map_err(|_| AppError::Security(format!("code SMTP invalide: {}", &line[..3])))?;
+                .map_err(|_| AppError::Security(format!("invalid SMTP code: {}", &line[..3])))?;
             let sep = line.as_bytes()[3];
             full.push_str(&line);
             // RFC 5321: '-' on the 4th char means more lines follow, ' ' means

@@ -27,12 +27,12 @@ pub async fn json_response(req: reqwest::RequestBuilder) -> AppResult<serde_json
     let response = req
         .send()
         .await
-        .map_err(|e| AppError::Security(format!("réseau: {e}")))?;
+        .map_err(|e| AppError::Security(format!("network: {e}")))?;
     let status = response.status();
     let text = response
         .text()
         .await
-        .map_err(|e| AppError::Security(format!("corps réponse: {e}")))?;
+        .map_err(|e| AppError::Security(format!("response body: {e}")))?;
     if !status.is_success() {
         return Err(AppError::Security(format!(
             "HTTP {} — {}",

@@ -124,13 +124,13 @@ fn score_one(campaign: &Value, template: &Value) -> Value {
         issues.push(json!({
             "severity": if penalty >= 15 { "critical" } else { "warning" },
             "criterion": "spam_subject",
-            "message": format!("Mots spam détectés dans l'objet : {}", subject_analysis.1.iter().take(3).cloned().collect::<Vec<_>>().join(", ")),
-            "fix": "Remplace les formulations agressives par une formulation neutre.",
+            "message": format!("Spam words detected in subject: {}", subject_analysis.1.iter().take(3).cloned().collect::<Vec<_>>().join(", ")),
+            "fix": "Replace aggressive wording with neutral wording.",
             "score_impact": -penalty
         }));
     } else {
         ok.push(
-            json!({ "criterion": "spam_subject", "message": "Objet : aucun mot spam détecté" }),
+            json!({ "criterion": "spam_subject", "message": "Subject: no spam words detected" }),
         );
     }
 
@@ -142,76 +142,70 @@ fn score_one(campaign: &Value, template: &Value) -> Value {
         issues.push(json!({
             "severity": "warning",
             "criterion": "spam_body",
-            "message": format!("{} occurrences de mots spam dans le corps", body_analysis.0),
-            "fix": format!("Révise les termes : {}", body_analysis.1.iter().take(3).cloned().collect::<Vec<_>>().join(", ")),
+            "message": format!("{} spam-word occurrences in body", body_analysis.0),
+            "fix": format!("Review the terms: {}", body_analysis.1.iter().take(3).cloned().collect::<Vec<_>>().join(", ")),
             "score_impact": -penalty
         }));
     } else {
-        ok.push(
-            json!({ "criterion": "spam_body", "message": "Corps : faible densité de mots spam" }),
-        );
+        ok.push(json!({ "criterion": "spam_body", "message": "Body: low spam-word density" }));
     }
 
     let img_count = html.matches("<img").count();
     let text_length = plain.trim().chars().count();
     if img_count > 0 && text_length < 200 {
         total_score -= 15;
-        issues.push(json!({ "severity": "critical", "criterion": "text_image_ratio", "message": format!("Trop peu de texte par rapport aux images ({text_length} chars pour {img_count} image(s))"), "fix": "Ajoute au moins 400 caractères de texte HTML.", "score_impact": -15 }));
+        issues.push(json!({ "severity": "critical", "criterion": "text_image_ratio", "message": format!("Too little text relative to images ({text_length} chars for {img_count} image(s))"), "fix": "Add at least 400 characters of HTML text.", "score_impact": -15 }));
     } else if img_count > 0 && text_length < 400 {
         total_score -= 7;
-        issues.push(json!({ "severity": "warning", "criterion": "text_image_ratio", "message": format!("Ratio texte/images limite ({text_length} chars)"), "fix": "Ajoute du texte supplémentaire.", "score_impact": -7 }));
+        issues.push(json!({ "severity": "warning", "criterion": "text_image_ratio", "message": format!("Borderline text/image ratio ({text_length} chars)"), "fix": "Add more text.", "score_impact": -7 }));
     } else {
         ok.push(
-            json!({ "criterion": "text_image_ratio", "message": "Ratio texte/images correct" }),
+            json!({ "criterion": "text_image_ratio", "message": "Acceptable text/image ratio" }),
         );
     }
 
     let html_size = html.len();
     if html_size > MAX_HTML_BYTES {
         total_score -= 10;
-        issues.push(json!({ "severity": "critical", "criterion": "html_size", "message": format!("HTML trop lourd : {:.1}KB", html_size as f64 / 1024.0), "fix": "Gmail coupe les emails > 102KB. Optimise le HTML.", "score_impact": -10 }));
+        issues.push(json!({ "severity": "critical", "criterion": "html_size", "message": format!("HTML too large: {:.1}KB", html_size as f64 / 1024.0), "fix": "Gmail clips emails > 102KB. Optimize the HTML.", "score_impact": -10 }));
     } else {
-        ok.push(json!({ "criterion": "html_size", "message": format!("Taille HTML : {:.1}KB (OK)", html_size as f64 / 1024.0) }));
+        ok.push(json!({ "criterion": "html_size", "message": format!("HTML size: {:.1}KB (OK)", html_size as f64 / 1024.0) }));
     }
 
     if text.trim().chars().count() < 100 {
         total_score -= 10;
-        issues.push(json!({ "severity": "critical", "criterion": "multipart", "message": "Version texte plain absente ou trop courte", "fix": "Ajoute une version texte plain.", "score_impact": -10 }));
+        issues.push(json!({ "severity": "critical", "criterion": "multipart", "message": "Plain text version missing or too short", "fix": "Add a plain text version.", "score_impact": -10 }));
     } else {
-        ok.push(json!({ "criterion": "multipart", "message": "Version texte plain présente" }));
+        ok.push(json!({ "criterion": "multipart", "message": "Plain text version present" }));
     }
 
     if unsub_url.trim().is_empty() {
         total_score -= 15;
-        issues.push(json!({ "severity": "critical", "criterion": "unsubscribe", "message": "URL de désabonnement non configurée", "fix": "Configure une URL de désabonnement.", "score_impact": -15 }));
+        issues.push(json!({ "severity": "critical", "criterion": "unsubscribe", "message": "Unsubscribe URL not configured", "fix": "Configure an unsubscribe URL.", "score_impact": -15 }));
     } else {
-        ok.push(
-            json!({ "criterion": "unsubscribe", "message": "URL de désabonnement configurée" }),
-        );
+        ok.push(json!({ "criterion": "unsubscribe", "message": "Unsubscribe URL configured" }));
     }
 
     let link_penalty = link_penalty(html, &mut issues);
     total_score -= link_penalty;
     if link_penalty == 0 {
-        ok.push(
-            json!({ "criterion": "links", "message": "Liens : HTTPS, pas de raccourcisseurs" }),
-        );
+        ok.push(json!({ "criterion": "links", "message": "Links: HTTPS, no shorteners" }));
     }
 
     let subject_len = subject.chars().count();
     if subject_len > MAX_SUBJECT_LENGTH {
         total_score -= 5;
-        issues.push(json!({ "severity": "warning", "criterion": "subject_length", "message": format!("Objet trop long : {subject_len} caractères"), "fix": "Raccourcis l'objet.", "score_impact": -5 }));
+        issues.push(json!({ "severity": "warning", "criterion": "subject_length", "message": format!("Subject too long: {subject_len} characters"), "fix": "Shorten the subject.", "score_impact": -5 }));
     } else {
-        ok.push(json!({ "criterion": "subject_length", "message": format!("Longueur objet : {subject_len} chars (OK)") }));
+        ok.push(json!({ "criterion": "subject_length", "message": format!("Subject length: {subject_len} chars (OK)") }));
     }
 
     if let Some(domain) = from_email.split('@').nth(1).map(str::to_ascii_lowercase) {
         if FREE_DOMAINS.contains(&domain.as_str()) {
             total_score -= 5;
-            issues.push(json!({ "severity": "critical", "criterion": "from_domain", "message": format!("Adresse From sur domaine libre (@{domain})"), "fix": "Utilise une adresse sur ton propre domaine.", "score_impact": -5, "action_link": "config_dns" }));
+            issues.push(json!({ "severity": "critical", "criterion": "from_domain", "message": format!("From address on free domain (@{domain})"), "fix": "Use an address on your own domain.", "score_impact": -5, "action_link": "config_dns" }));
         } else {
-            ok.push(json!({ "criterion": "from_domain", "message": format!("From : domaine custom ({domain})") }));
+            ok.push(json!({ "criterion": "from_domain", "message": format!("From: custom domain ({domain})") }));
         }
     }
 
@@ -222,7 +216,7 @@ fn score_one(campaign: &Value, template: &Value) -> Value {
         .filter(|m| !IMG_HAS_ALT_RE.is_match(m.as_str()))
         .count();
     if img_without_alt > 0 {
-        warnings.push(json!({ "criterion": "img_alt", "message": format!("{img_without_alt} image(s) sans attribut alt"), "fix": "Ajoute alt=\"\" à chaque image." }));
+        warnings.push(json!({ "criterion": "img_alt", "message": format!("{img_without_alt} image(s) without alt attribute"), "fix": "Add alt=\"\" to every image." }));
     }
 
     let final_score = total_score.clamp(0, 100);
@@ -262,24 +256,21 @@ fn link_penalty(html: &str, issues: &mut Vec<Value>) -> i32 {
     if !shorteners.is_empty() {
         penalty += 6;
         parts.push(format!(
-            "Raccourcisseurs d'URL détectés : {}",
+            "URL shorteners detected: {}",
             shorteners.join(", ")
         ));
     }
     if http_links > 0 {
         penalty += 2;
-        parts.push(format!("{http_links} lien(s) HTTP non sécurisé(s)"));
+        parts.push(format!("{http_links} insecure HTTP link(s)"));
     }
     if domains.len() > 4 {
         penalty += 2;
-        parts.push(format!(
-            "{} domaines différents dans les liens",
-            domains.len()
-        ));
+        parts.push(format!("{} different domains in links", domains.len()));
     }
     let penalty = penalty.min(10);
     if penalty > 0 {
-        issues.push(json!({ "severity": if penalty >= 6 { "critical" } else { "warning" }, "criterion": "links", "message": parts.join(" | "), "fix": "Utilise des URLs complètes HTTPS sur ton domaine.", "score_impact": -penalty }));
+        issues.push(json!({ "severity": if penalty >= 6 { "critical" } else { "warning" }, "criterion": "links", "message": parts.join(" | "), "fix": "Use full HTTPS URLs on your own domain.", "score_impact": -penalty }));
     }
     penalty
 }
@@ -292,11 +283,11 @@ fn grade(score: i32) -> Value {
     if score >= 90 {
         json!({ "label": "Excellent", "color": "green-bright" })
     } else if score >= 75 {
-        json!({ "label": "Bon", "color": "green" })
+        json!({ "label": "Good", "color": "green" })
     } else if score >= 50 {
-        json!({ "label": "Peut mieux faire", "color": "orange" })
+        json!({ "label": "Needs work", "color": "orange" })
     } else {
-        json!({ "label": "Ne pas envoyer", "color": "red" })
+        json!({ "label": "Do not send", "color": "red" })
     }
 }
 
@@ -341,9 +332,9 @@ mod tests {
     #[test]
     fn grade_thresholds() {
         assert_eq!(grade(95)["label"], "Excellent");
-        assert_eq!(grade(80)["label"], "Bon");
-        assert_eq!(grade(60)["label"], "Peut mieux faire");
-        assert_eq!(grade(10)["label"], "Ne pas envoyer");
+        assert_eq!(grade(80)["label"], "Good");
+        assert_eq!(grade(60)["label"], "Needs work");
+        assert_eq!(grade(10)["label"], "Do not send");
     }
 
     #[test]

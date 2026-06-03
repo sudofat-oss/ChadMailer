@@ -83,7 +83,7 @@ impl CampaignEngine {
             Ok(())
         } else {
             Err(AppError::NotFound(format!(
-                "campagne {campaign_id} pas en cours"
+                "campaign {campaign_id} not running"
             )))
         }
     }
@@ -95,7 +95,7 @@ impl CampaignEngine {
             Ok(())
         } else {
             Err(AppError::NotFound(format!(
-                "campagne {campaign_id} pas en cours"
+                "campaign {campaign_id} not running"
             )))
         }
     }
@@ -114,7 +114,7 @@ impl CampaignEngine {
         app_handle: AppHandle,
     ) -> AppResult<()> {
         if self.is_running(&campaign_id).await {
-            return Err(AppError::Validation("Campagne déjà en cours".into()));
+            return Err(AppError::Validation("Campaign already running".into()));
         }
 
         let cancel = CancellationToken::new();
@@ -155,7 +155,7 @@ impl CampaignEngine {
                         campaign_id: campaign_id.clone(),
                         timestamp: crate::core::now_utc_rfc3339(),
                         level: "error".into(),
-                        message: format!("Moteur en erreur fatale: {err}"),
+                        message: format!("Engine fatal error: {err}"),
                     },
                 );
             }
@@ -185,7 +185,7 @@ async fn run_campaign(
     let provider_ids = resolve_provider_ids(&cfg);
     if provider_ids.is_empty() {
         return Err(AppError::Validation(
-            "Aucune configuration SMTP/API associée à la campagne".into(),
+            "No SMTP/API configuration associated with this campaign".into(),
         ));
     }
     // Load providers concurrently (each is a separate JSON file).
@@ -224,7 +224,7 @@ async fn run_campaign(
     }
     if providers.is_empty() {
         return Err(AppError::Validation(
-            "Aucune configuration SMTP/API valide".into(),
+            "No valid SMTP/API configuration".into(),
         ));
     }
 
@@ -251,11 +251,7 @@ async fn run_campaign(
         Ok(pool) => pool,
         Err(err) => {
             logger
-                .log(
-                    &app_handle,
-                    "warning",
-                    &format!("Proxies désactivés : {err}"),
-                )
+                .log(&app_handle, "warning", &format!("Proxies disabled: {err}"))
                 .await;
             None
         }
@@ -265,7 +261,7 @@ async fn run_campaign(
     if let Some(pool) = proxy_pool.as_ref() {
         let rl_msg = match pool.rate_limit() {
             Some(rl) => format!(
-                " — limite {} envoi(s) toutes les {}s par proxy",
+                " — limit {} send(s) per {}s per proxy",
                 rl.max_uses,
                 rl.window.as_secs()
             ),
@@ -275,10 +271,7 @@ async fn run_campaign(
             .log(
                 &app_handle,
                 "info",
-                &format!(
-                    "Proxies activés : {} proxy(s) chargé(s){rl_msg}",
-                    pool.len()
-                ),
+                &format!("Proxies enabled: {} proxy(s) loaded{rl_msg}", pool.len()),
             )
             .await;
     }
@@ -296,7 +289,7 @@ async fn run_campaign(
                 .log(
                     &app_handle,
                     "info",
-                    "SMTP/Office365 : envois routés via proxy (un tunnel par message).",
+                    "SMTP/Office365: sends routed through proxy (one tunnel per message).",
                 )
                 .await;
         }
@@ -313,7 +306,7 @@ async fn run_campaign(
         })
         .unwrap_or_default();
     if template_ids.is_empty() {
-        return Err(AppError::Validation("Aucun template sélectionné".into()));
+        return Err(AppError::Validation("No template selected".into()));
     }
     let template_load_paths = paths.clone();
     let template_handles: Vec<_> = template_ids
@@ -336,9 +329,7 @@ async fn run_campaign(
         }
     }
     if templates.is_empty() {
-        return Err(AppError::Validation(
-            "Templates introuvables sur disque".into(),
-        ));
+        return Err(AppError::Validation("Templates not found on disk".into()));
     }
 
     // Load recipients
@@ -351,7 +342,7 @@ async fn run_campaign(
             .log(
                 &app_handle,
                 "warning",
-                "Aucun destinataire à envoyer après filtres.",
+                "No recipients to send to after filters.",
             )
             .await;
         finalize(
@@ -393,7 +384,7 @@ async fn run_campaign(
         .log(
             &app_handle,
             "info",
-            &format!("Démarrage de la campagne ({total} destinataire(s))."),
+            &format!("Starting campaign ({total} recipient(s))."),
         )
         .await;
 
@@ -440,7 +431,7 @@ async fn run_campaign(
     for (index, recipient) in filtered.iter().enumerate() {
         if cancel.is_cancelled() {
             logger
-                .log(&app_handle, "info", "Campagne stoppée par l'utilisateur.")
+                .log(&app_handle, "info", "Campaign stopped by user.")
                 .await;
             finalize(
                 &paths,
@@ -554,7 +545,7 @@ async fn run_campaign(
                         .log(
                             &app_handle,
                             "warning",
-                            &format!("Proxy indisponible: {err} — envoi sans proxy"),
+                            &format!("Proxy unavailable: {err} — sending without proxy"),
                         )
                         .await;
                     None
@@ -572,7 +563,7 @@ async fn run_campaign(
                             &app_handle,
                             "info",
                             &format!(
-                                "Quota proxy atteint, attente {:.1}s avant l'envoi suivant",
+                                "Proxy quota reached, waiting {:.1}s before next send",
                                 waited.as_secs_f64()
                             ),
                         )
@@ -641,7 +632,7 @@ async fn run_campaign(
                         &app_handle,
                         "failed",
                         &format!(
-                            "[{}/{}] ÉCHEC → {} ({}){}",
+                            "[{}/{}] FAIL → {} ({}){}",
                             index + 1,
                             total,
                             to_email,
@@ -722,7 +713,7 @@ async fn finalize(
             app_handle,
             "info",
             &format!(
-                "Campagne {status} — envoyés: {}, échecs: {}.",
+                "Campaign {status} — sent: {}, failed: {}.",
                 campaign.stats.sent, campaign.stats.failed
             ),
         )
@@ -941,7 +932,7 @@ fn resolve_sender(
         }
     }
 
-    // Fallback : pour SMTP générique / Office365, si pas de From, prendre le username
+    // Fallback: for generic SMTP / Office365, if no From is set, use the username
     if from_email.trim().is_empty()
         && matches!(provider.provider.as_str(), "smtp" | "office365")
         && !provider.username.trim().is_empty()
@@ -956,7 +947,7 @@ async fn load_campaign(paths: &AppPaths, campaign_id: &str) -> AppResult<Campaig
     let path = paths.campaigns_dir.join(format!("{campaign_id}.json"));
     storage::read_json::<Campaign>(&path)
         .await
-        .map_err(|_| AppError::NotFound(format!("campagne {campaign_id} introuvable")))
+        .map_err(|_| AppError::NotFound(format!("campaign {campaign_id} not found")))
 }
 
 async fn save_campaign(paths: &AppPaths, campaign: &Campaign) -> AppResult<()> {
@@ -973,7 +964,7 @@ async fn load_recipients(cfg: &Value) -> AppResult<Vec<HashMap<String, String>>>
         .to_string();
     if file_path.is_empty() {
         return Err(AppError::Validation(
-            "Fichier de destinataires manquant dans la campagne".into(),
+            "Recipient file missing from campaign".into(),
         ));
     }
     let file_type = cfg
@@ -1013,9 +1004,9 @@ fn build_proxy_pool(cfg: &Value) -> AppResult<Option<ProxyPool>> {
     let (specs, errors) = proxy::parse_many(&blob);
     if specs.is_empty() {
         return Err(AppError::Validation(format!(
-            "aucun proxy valide ({}). Format attendu: scheme://host:port ou host:port[:user:pass]",
+            "no valid proxy ({}). Expected format: scheme://host:port or host:port[:user:pass]",
             if errors.is_empty() {
-                "liste vide".to_string()
+                "empty list".to_string()
             } else {
                 errors.join("; ")
             }

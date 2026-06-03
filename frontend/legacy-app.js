@@ -4,7 +4,7 @@
 
 const state = {
   currentSection: "dashboard",
-  /** Timer polling campagne (évite SSE : php -S ne traite qu’une requête à la fois) */
+  /** Campaign polling timer (avoids SSE: php -S handles only one request at a time) */
   campaignPollTimer: null,
   currentCampaignId: null,
   editingCampaignId: null,
@@ -15,29 +15,29 @@ const state = {
   templates: [],
   smtpConfigs: [],
   paused: false,
-  /** En-têtes du dernier CSV importé (noms de colonnes exacts) */
+  /** Headers of the last imported CSV (exact column names) */
   csvHeaders: [],
   csvMappingReparseTimer: null,
-  /** Éditeur template : 'code' | 'visual' */
+  /** Template editor: 'code' | 'visual' */
   templateHtmlEditMode: "code",
   templatePreviewDevice: "desktop",
-  /** true après « Appliquer » données réelles — réinitialisé si le HTML change en mode code */
+  /** true after "Apply" real data - reset if the HTML changes in code mode */
   templatePreviewUsesRealMerge: false,
-  /** Résumé avant envoi */
+  /** Pre-send summary */
   sendSummaryPending: null,
   configCacheForDetailEta: null,
   completionWatchTimer: null,
   completionWatchCampaignId: null,
   completionWatchName: null,
-  /** Éditeur visuel : true si le source est un document HTML complet, false si fragment injecté dans body */
+  /** Visual editor: true if the source is a full HTML document, false if a fragment injected into body */
   templateVisualIsFullDocument: false,
   templateVisualLoading: false,
   templateVisualInputHandler: null,
-  /** Dossiers de templates (loaders + rendu côté UI) */
+  /** Template folders (loaders + UI-side rendering) */
   templateFolders: [],
-  /** Dossier actuellement ouvert ('' = vue racine) */
+  /** Currently open folder ('' = root view) */
   currentTemplateFolderId: "",
-  /** État courant du DnD templates ↔ dossiers */
+  /** Current state of template <-> folder DnD */
   templateDnd: {
     draggingId: null,
     draggingKind: null, // 'template' | 'folder' | null
@@ -46,386 +46,8 @@ const state = {
   },
 };
 
-const UI_TRANSLATIONS_FR_TO_EN = [
-  ["Réduire le panneau", "Collapse panel"],
-  ["Retour à la liste", "Back to list"],
-  ["Quitter l’édition", "Exit edit mode"],
-  ["Mode édition", "Edit mode"],
-  ["Destinataires", "Recipients"],
-  ["Template(s)", "Template(s)"],
-  ["Configuration", "Configuration"],
-  ["Analyser & Envoyer", "Analyze & Send"],
-  ["Détail région choisie", "Selected region details"],
-  ["Scanner toutes les régions", "Scan all regions"],
-  ["Tester la connexion", "Test connection"],
-  [
-    "Enregistrer & utiliser pour cette campagne",
-    "Save & use for this campaign",
-  ],
-  ["Email de test", "Test email"],
-  ["Envoyer l’email de test", "Send test email"],
-  ["Sélectionnez", "Select"],
-  ["sélectionnez", "select"],
-  ["Importer", "Import"],
-  ["Lancer l’envoi", "Start sending"],
-  ["Relancer", "Relaunch"],
-  ["Pause", "Pause"],
-  ["Reprendre", "Resume"],
-  ["Supprimer", "Delete"],
-  ["Dossier", "Folder"],
-  ["dossier", "folder"],
-  ["template", "template"],
-  ["paramètres", "settings"],
-  ["Paramètres", "Settings"],
-  ["fournisseur", "provider"],
-  ["Fournisseur", "Provider"],
-  ["générique", "generic"],
-  ["obligatoire", "required"],
-  ["Optionnel", "Optional"],
-  ["optionnel", "optional"],
-  ["liste", "list"],
-  ["noms de colonnes", "column names"],
-  ["Variables personnalisées", "Custom variables"],
-  ["expéditeurs autorisés", "authorized senders"],
-  ["Aucune saisie manuelle", "No manual input"],
-  ["identités", "identities"],
-  ["introuvable", "not found"],
-  ["sauvegarde", "save"],
-  ["suppression", "deletion"],
-  ["création", "creation"],
-  ["mise à jour", "update"],
-  ["prévisualisation", "preview"],
-  ["prérempli", "pre-filled"],
-  ["délivrabilité", "deliverability"],
-  ["activité", "activity"],
-  ["Terminé", "Completed"],
-  ["Panneau", "Panel"],
-  ["brouillon", "draft"],
-  ["Brouillon actuel", "Current draft"],
-  ["Aucun modèle pour l’instant", "No template yet"],
-  ["Aucune campagne", "No campaign"],
-  ["Aucune configuration SMTP / API", "No SMTP / API configuration"],
-  ["Connexion en cours…", "Connecting..."],
-  ["Interrogation des API en cours…", "Querying APIs..."],
-  ["Interrogation de l’API Amazon SES…", "Querying Amazon SES API..."],
-  ["Région Amazon SES", "Amazon SES region"],
-  ["nom affiché", "display name"],
-  ["Nom affiché", "Display name"],
-  ["From (nom affiché)", "From (display name)"],
-  [
-    "Ajustez la liste, l’expéditeur, le SMTP ou les templates, enregistrez puis lancez l’envoi pour appliquer les changements.",
-    "Adjust list, sender, SMTP or templates, save, then start sending to apply changes.",
-  ],
-  [
-    "Pour changer la liste, l’expéditeur ou le SMTP avant un nouvel envoi, utilisez « Modifier la campagne ».",
-    'To change list, sender, or SMTP before a new send, use "Edit campaign".',
-  ],
-  [
-    "Impossible de localiser le worker (cli.php/PHAR).",
-    "Unable to locate worker (cli.php/PHAR).",
-  ],
-  ["Chargement...", "Loading..."],
-  ["Chargement des expéditeurs…", "Loading senders..."],
-  ["Chargement des identités…", "Loading identities..."],
-  ["Erreur réseau", "Network error"],
-  ["Erreur API", "API error"],
-  ["Erreur", "Error"],
-  ["Échec", "Failed"],
-  ["succès", "success"],
-  ["Connexion réussie.", "Connection successful."],
-  [
-    "Aucun log disponible pour cette campagne.",
-    "No logs available for this campaign.",
-  ],
-  ["en attente du worker…", "waiting for worker..."],
-  ["en pause", "paused"],
-  ["terminé", "completed"],
-  ["Campagnes", "Campaigns"],
-  ["Campagne", "Campaign"],
-  ["Envoyés", "Sent"],
-  ["Échecs", "Failed"],
-  ["En attente", "Pending"],
-  ["Configuration SMTP", "SMTP configuration"],
-  ["Configurations SMTP / API", "SMTP / API configurations"],
-  ["Nouveau dossier", "New folder"],
-  ["Nouveau template", "New template"],
-  ["Annuler", "Cancel"],
-  ["Enregistrer", "Save"],
-  ["Analyser", "Analyze"],
-  ["Envoyer", "Send"],
-  ["Connexion", "Connection"],
-  ["délai", "delay"],
-  ["Délai", "Delay"],
-  ["expéditeur", "sender"],
-  ["Expéditeur", "Sender"],
-  ["destinataire", "recipient"],
-  ["Destinataire", "Recipient"],
-  ["Saisie manuelle", "Manual input"],
-  ["Configuration enregistrée", "Saved configuration"],
-  ["Choisissez", "Choose"],
-  ["Choisir", "Choose"],
-  ["Aucun", "No"],
-  ["Aucune", "No"],
-  ["Région", "Region"],
-  ["Clé API", "API key"],
-  ["Mot de passe", "Password"],
-  ["Prénom", "First name"],
-  ["États-Unis / global", "United States / global"],
-  ["Union européenne", "European Union"],
-  [
-    "Aperçu avec données réelles — modifiez le HTML puis réappliquez pour mettre à jour.",
-    "Preview with real data - edit the HTML and reapply to refresh.",
-  ],
-  [
-    "Aperçu avec exemples fictifs — choisissez une campagne (ou le brouillon) et cliquez « Appliquer » pour une vraie ligne.",
-    'Preview with sample data - choose a campaign (or draft) and click "Apply" for a real row.',
-  ],
-  [
-    "Saisissez du HTML à gauche pour afficher l’aperçu ici.",
-    "Enter HTML on the left to display preview here.",
-  ],
-  ["Récapitulatif avant envoi", "Pre-send summary"],
-  ["Envoi forcé", "Forced send"],
-  ["Score délivrabilité", "Deliverability score"],
-  [
-    "Campagne existante — score non recalculé dans ce résumé.",
-    "Existing campaign - score not recalculated in this summary.",
-  ],
-  ["Délai entre e-mails", "Delay between emails"],
-  ["Durée estimée (ordre de grandeur)", "Estimated duration (approx.)"],
-  ["Emails envoyés", "Emails sent"],
-  [
-    "Aucune campagne récente. Les dernières campagnes apparaîtront ici.",
-    "No recent campaign. Latest campaigns will appear here.",
-  ],
-  [
-    "Par où commencer ? Créez un template de courriel, puis une campagne avec votre liste de contacts.",
-    "Where to start? Create an email template, then a campaign with your contact list.",
-  ],
-  ["Créer un template", "Create a template"],
-  ["Aucun modèle pour l’instant", "No template yet"],
-  [
-    "Créez un premier template : sujet, HTML, variables",
-    "Create your first template: subject, HTML, variables",
-  ],
-  [
-    "Retournez à « Tous les templates » puis glissez des letters ici.",
-    'Go back to "All templates" then drag templates here.',
-  ],
-  ["Glissez un élément ici pour le déplacer", "Drag an item here to move it"],
-  ["Créer un dossier", "Create a folder"],
-  ["Template enregistré", "Template saved"],
-  ["Terminée", "Completed"],
-  ["Échouée", "Failed"],
-  ["Arrêtée", "Stopped"],
-  [
-    "Impossible de modifier une campagne en cours. Mettez-la en pause ou arrêtez-la d’abord.",
-    "Cannot edit a running campaign. Pause or stop it first.",
-  ],
-  [
-    "Les fichiers Excel ne sont pas pris en charge. Exportez votre table en CSV (une ligne d’en-têtes + une ligne par contact).",
-    "Excel files are not supported. Export as CSV (one header row + one row per contact).",
-  ],
-  ["Sélectionnez au moins un template.", "Select at least one template."],
-  [
-    "Sélectionnez au moins un SMTP pour la rotation.",
-    "Select at least one SMTP for rotation.",
-  ],
-  ["Choisissez un email expéditeur.", "Choose a sender email."],
-  [
-    "Choisissez un email expéditeur (liste API ou saisie libre selon le fournisseur).",
-    "Choose a sender email (API list or manual input depending on provider).",
-  ],
-  [
-    "Importez une liste de destinataires (ou rouvrez la campagne si le fichier a été perdu).",
-    "Import a recipient list (or reopen campaign if file was lost).",
-  ],
-  [
-    "Lancez d’abord l’analyse de délivrabilité, ou utilisez « Envoyer quand même » si vous acceptez le risque.",
-    'Run deliverability analysis first, or use "Send anyway" if you accept the risk.',
-  ],
-  [
-    "Enregistrez d’abord le nouveau SMTP (« Enregistrer & utiliser pour cette campagne »), ou sélectionnez une configuration existante.",
-    'Save the new SMTP first ("Save & use for this campaign"), or select an existing configuration.',
-  ],
-  ["Impossible de récupérer l'ID de campagne.", "Unable to get campaign ID."],
-  ["Erreur mise à jour campagne", "Campaign update error"],
-  ["Erreur création campagne", "Campaign creation error"],
-  ["Erreur analyse", "Analysis error"],
-  ["Erreur upload", "Upload error"],
-  ["Erreur parsing", "Parsing error"],
-  ["Erreur score", "Score error"],
-  ["Aucun expéditeur disponible", "No sender available"],
-  [
-    "Aucun expéditeur listé pour ce compte.",
-    "No sender listed for this account.",
-  ],
-  ["Aucun expéditeur actif trouvé.", "No active sender found."],
-  ["Choisissez une configuration SMTP", "Choose an SMTP configuration"],
-  ["Choisissez un expéditeur", "Choose a sender"],
-  ["Choisissez une campagne", "Choose a campaign"],
-  ["Campagne introuvable", "Campaign not found"],
-  [
-    "Aucune donnée en cache pour cette session",
-    "No cached data for this session",
-  ],
-  ["Interroger l’API", "Query API"],
-  ["Historique", "History"],
-  ["Saisie libre", "Manual entry"],
-  ["fournit pas", "does not provide"],
-  ["ne propose pas", "does not provide"],
-  ["dans l’app.", "in the app."],
-  ["adresse", "address"],
-  ["adresses", "addresses"],
-  ["enregistrée", "saved"],
-  ["enregistré", "saved"],
-  ["vérifié", "verified"],
-  ["vérifiée", "verified"],
-  ["Vérifiez", "Check"],
-  ["d’abord", "first"],
-  ["Renseignez", "Fill in"],
-  ["compte", "account"],
-  ["chargement", "loading"],
-  ["charger", "load"],
-  ["impossible de charger", "unable to load"],
-  ["Impossible de charger", "Unable to load"],
-  ["Impossible d’enregistrer la campagne", "Unable to save campaign"],
-  ["Impossible de charger la campagne", "Unable to load campaign"],
-  ["Erreur prévisualisation", "Preview error"],
-  ["Modifier la campagne", "Edit campaign"],
-  ["Nouvelle campagne", "New campaign"],
-  ["Enregistrer & lancer l’envoi", "Save & start sending"],
-  ["Campagne ", "Campaign "],
-  ["Connexion réussie", "Connection successful"],
-  ["réponse serveur inattendue", "unexpected server response"],
-  ["Erreur inconnue", "Unknown error"],
-  ["erreur inconnue", "unknown error"],
-  ["Erreur lors de la sauvegarde", "Error while saving"],
-  ["Erreur lors de la suppression", "Error while deleting"],
-  ["Erreur création dossier", "Folder creation error"],
-  ["Impossible de déplacer le template", "Unable to move template"],
-  ["Impossible de déplacer le dossier", "Unable to move folder"],
-  ["Aucun message correspondant", "No matching message"],
-  ["Essayez d’élargir les filtres", "Try widening filters"],
-  ["ou de charger un nombre plus élevé", "or loading a higher number"],
-  ["Sélectionnez une campagne", "Select a campaign"],
-  ["Erreur chargement campagnes", "Campaign loading error"],
-  ["Erreur envoi", "Send error"],
-  ["Erreur lors du relancement", "Relaunch error"],
-  ["Erreur lors de l'upload", "Upload error"],
-  ["Erreur lors de l’upload", "Upload error"],
-  ["Échec :", "Failed:"],
-  ["expéditeur (From) sont requis", "sender (From) are required"],
-  ["sont requis", "are required"],
-  ["Aucune identité listée", "No identity listed"],
-  ["Aucune identité vérifiée", "No verified identity"],
-  ["Identité", "Identity"],
-  ["identité", "identity"],
-  ["Aucune donnée en cache", "No cached data"],
-  ["cliquez sur", "click"],
-  ["Introspection API disponible pour", "API introspection available for"],
-  ["uniquement", "only"],
-  ["Temps restant", "Time remaining"],
-  ["Relancer l’envoi", "Relaunch sending"],
-  ["Utilisez", "Use"],
-  ["pour les changer", "to change them"],
-  ["en attente", "pending"],
-  ["arrêtée", "stopped"],
-  ["envoyés", "sent"],
-  ["Fichier", "File"],
-  ["destinataire(s)", "recipient(s)"],
-  ["Le nom du template est requis.", "Template name is required."],
-  ["Le nom du dossier est requis.", "Folder name is required."],
-  ["Le nom de la configuration est requis.", "Configuration name is required."],
-  ["URL de désabonnement sauvegardée.", "Unsubscribe URL saved."],
-  ["Copié !", "Copied!"],
-];
-
-function translateUiText(value) {
-  if (value == null) return value;
-  let out = String(value);
-  UI_TRANSLATIONS_FR_TO_EN.forEach(([fr, en]) => {
-    out = out.split(fr).join(en);
-  });
-  return out;
-}
-
-function translateUiNodeText(root) {
-  if (!root) return;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
-  while (node) {
-    if (
-      node.parentElement &&
-      !["SCRIPT", "STYLE"].includes(node.parentElement.tagName)
-    ) {
-      const translated = translateUiText(node.nodeValue);
-      if (translated !== node.nodeValue) node.nodeValue = translated;
-    }
-    node = walker.nextNode();
-  }
-}
-
-function translateUiAttributes(root) {
-  if (!root || !root.querySelectorAll) return;
-  root.querySelectorAll("[title],[placeholder],[aria-label]").forEach((el) => {
-    ["title", "placeholder", "aria-label"].forEach((attr) => {
-      if (el.hasAttribute(attr)) {
-        const current = el.getAttribute(attr) || "";
-        const translated = translateUiText(current);
-        if (translated !== current) el.setAttribute(attr, translated);
-      }
-    });
-  });
-}
-
-function applyEnglishUiTranslation(root) {
-  const target = root || document.body;
-  if (!target) return;
-  translateUiNodeText(target);
-  translateUiAttributes(target);
-}
-
-function installUiTranslationObserver() {
-  if (document.documentElement) document.documentElement.lang = "en";
-  applyEnglishUiTranslation(document.body);
-
-  const origAlert = window.alert;
-  window.alert = function patchedAlert(message) {
-    return origAlert.call(window, translateUiText(message));
-  };
-  const origConfirm = window.confirm;
-  window.confirm = function patchedConfirm(message) {
-    return origConfirm.call(window, translateUiText(message));
-  };
-
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((m) => {
-      if (m.type === "characterData" && m.target && m.target.parentElement) {
-        const translated = translateUiText(m.target.nodeValue);
-        if (translated !== m.target.nodeValue) m.target.nodeValue = translated;
-        return;
-      }
-      m.addedNodes.forEach((n) => {
-        if (n.nodeType === Node.TEXT_NODE) {
-          const translated = translateUiText(n.nodeValue);
-          if (translated !== n.nodeValue) n.nodeValue = translated;
-        } else if (n.nodeType === Node.ELEMENT_NODE) {
-          applyEnglishUiTranslation(n);
-        }
-      });
-    });
-  });
-  if (document.body)
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-}
-
 /**
- * Régions SES (formulaires) — aligné sur SesAccountInspector::PROBE_REGIONS (PHP).
+ * SES regions (forms) - aligned with SesAccountInspector::PROBE_REGIONS (PHP).
  * @type {{ v: string, l: string }[]}
  */
 const SES_AWS_REGION_OPTIONS = [
@@ -483,7 +105,7 @@ function populateAwsRegionSelects() {
   });
 }
 
-/** Ajoute l’option si besoin (ex. ancienne config ou scan) puis sélectionne. */
+/** Adds the option if needed (e.g. old config or scan) then selects it. */
 function ensureAwsRegionInSelect(selectId, regionCode, displayLabel) {
   const sel = document.getElementById(selectId);
   if (!sel || !regionCode) return;
@@ -500,7 +122,7 @@ function ensureAwsRegionInSelect(selectId, regionCode, displayLabel) {
   if (found) sel.value = code;
 }
 
-// --- Cache introspection API (sessionStorage — jamais d’appel automatique) ---
+// --- API introspection cache (sessionStorage - never an automatic call) ---
 const INSPECT_CACHE_SS_KEY = "chadmailer_provider_inspect_v1";
 const INSPECTABLE_SMTP_PROVIDERS = new Set([
   "brevo",
@@ -553,10 +175,10 @@ function removeSmtpInspectCacheEntry(smtpId) {
 function buildInspectPreHtml(fetchedAt, inspectObj) {
   const t =
     fetchedAt && String(fetchedAt).trim()
-      ? `<p class="field-hint smtp-inspect-meta"><strong>Récupéré :</strong> ${escHtml(
+      ? `<p class="field-hint smtp-inspect-meta"><strong>Fetched:</strong> ${escHtml(
           (() => {
             try {
-              return new Date(fetchedAt).toLocaleString("fr-FR");
+              return new Date(fetchedAt).toLocaleString("en-US");
             } catch {
               return String(fetchedAt);
             }
@@ -574,38 +196,35 @@ function buildInspectPreHtml(fetchedAt, inspectObj) {
 function renderSmtpDetailMetaRows(c) {
   const rows = [
     ["ID", c.id || "—"],
-    ["Nom", c.name || "—"],
-    ["Fournisseur", c.provider || "—"],
+    ["Name", c.name || "—"],
+    ["Provider", c.provider || "—"],
   ];
   if (c.host) rows.push(["Host", c.host]);
   if (c.port != null && c.port !== "") rows.push(["Port", String(c.port)]);
-  if (c.username) rows.push(["Utilisateur", c.username]);
-  if (c.region) rows.push(["Région SES", c.region]);
+  if (c.username) rows.push(["User", c.username]);
+  if (c.region) rows.push(["SES region", c.region]);
   if (String(c.provider || "").toLowerCase() === "office365") {
     const enc = (c.encryption && String(c.encryption).trim()) || "tls";
     rows.push([
-      "Chiffrement SMTP",
-      enc.toUpperCase() + " (STARTTLS attendu sur le port 587)",
+      "SMTP encryption",
+      enc.toUpperCase() + " (STARTTLS expected on port 587)",
     ]);
   }
   if (String(c.provider || "").toLowerCase() === "sendgrid") {
     const g = c.sendgrid_region != null ? String(c.sendgrid_region).trim() : "";
     const label =
       g === "eu"
-        ? "UE (api.eu.sendgrid.com)"
+        ? "EU (api.eu.sendgrid.com)"
         : g === "global" || g === "us"
           ? "US / global (api.sendgrid.com)"
-          : "Automatique (introspection UE puis US)";
-    rows.push(["Région API SendGrid", label]);
+          : "Automatic (EU then US introspection)";
+    rows.push(["SendGrid API region", label]);
   }
   const masked =
     (c.api_key && String(c.api_key).includes("*")) ||
     c.password === "***" ||
     (c.secret_key && String(c.secret_key).includes("*"));
-  rows.push([
-    "Secrets enregistrés",
-    masked ? "•••• (masqué dans l’interface)" : "—",
-  ]);
+  rows.push(["Saved secrets", masked ? "•••• (masked in the interface)" : "—"]);
   return rows;
 }
 
@@ -630,10 +249,10 @@ function smtpDnsBadgeClass(st) {
 function buildSmtpRemoteRowExtrasHtml(c) {
   const p = String(c.provider || "").toLowerCase();
   if (!["brevo", "ses", "amazonses", "sendgrid"].includes(p)) {
-    return '<div class="smtp-row-extras smtp-row-extras--na" title="Indicateurs API pour Brevo, Amazon SES et SendGrid">—</div>';
+    return '<div class="smtp-row-extras smtp-row-extras--na" title="API indicators for Brevo, Amazon SES and SendGrid">—</div>';
   }
   if (!c.remote_snapshot || typeof c.remote_snapshot !== "object") {
-    return '<div class="smtp-row-extras smtp-row-extras--na" title="Sauvegardez la config ou ouvrez le détail puis « Interroger l’API » pour actualiser quotas et DNS">⋯</div>';
+    return '<div class="smtp-row-extras smtp-row-extras--na" title="Save the config or open the details, then click &quot;Query API&quot; to refresh quotas and DNS">⋯</div>';
   }
   const snap = c.remote_snapshot;
   const d = snap.dns_badges || {};
@@ -649,10 +268,10 @@ function buildSmtpRemoteRowExtrasHtml(c) {
     '<div class="smtp-row-extras" title="' +
     escAttr(
       hint ||
-        "Agrégat SPF / DKIM / DMARC selon la doc fournisseur + DNS public si besoin",
+        "SPF / DKIM / DMARC aggregate per provider docs + public DNS if needed",
     ) +
     '">' +
-    '<div class="smtp-dns-badges" role="group" aria-label="Authentification DNS">' +
+    '<div class="smtp-dns-badges" role="group" aria-label="DNS authentication">' +
     '<span class="' +
     smtpDnsBadgeClass(d.spf) +
     '">SPF</span>' +
@@ -689,7 +308,7 @@ function patchSmtpRowExtrasFromState(smtpId) {
   slot.innerHTML = buildSmtpRemoteRowExtrasHtml(cfg);
 }
 
-// --- Expéditeur campagne : liste API (Brevo / SES) ou saisie libre (autres fournisseurs) ---
+// --- Campaign sender: API list (Brevo / SES) or manual entry (other providers) ---
 
 function getCampaignSmtpContextForVerifiedSenders() {
   const smtpSel = document.getElementById("smtpConfigSelect");
@@ -763,7 +382,7 @@ function getCampaignSmtpContextForVerifiedSenders() {
     return {
       supportsApi: false,
       reason: "other_provider",
-      hint: "Saisie libre : ce fournisseur ne fournit pas de liste d’expéditeurs dans l’app.",
+      hint: "Manual entry: this provider does not provide a sender list in the app.",
       provider: d.provider,
       payload: null,
     };
@@ -781,7 +400,7 @@ function getCampaignSmtpContextForVerifiedSenders() {
   return {
     supportsApi: false,
     reason: "other_provider",
-    hint: "Saisie libre : liste d’expéditeurs API non disponible pour ce fournisseur.",
+    hint: "Manual entry: API sender list not available for this provider.",
     provider: p,
     payload: null,
   };
@@ -818,7 +437,7 @@ function applyCampaignFromEmailBlockedMode(message) {
   if (hint) {
     hint.textContent =
       message ||
-      "Choisissez une configuration SMTP (Brevo, SendGrid ou Amazon SES) pour afficher les expéditeurs autorisés.";
+      "Choose an SMTP configuration (Brevo, SendGrid or Amazon SES) to show authorized senders.";
     hint.classList.remove("hidden");
   }
 }
@@ -841,7 +460,7 @@ function applyCampaignFromEmailManualMode(value) {
   }
   if (hint) {
     hint.textContent =
-      "Saisie libre : ce fournisseur ne propose pas de liste d’expéditeurs dans l’app.";
+      "Manual entry: this provider does not offer a sender list in the app.";
     hint.classList.remove("hidden");
   }
 }
@@ -863,8 +482,8 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
     const o0 = document.createElement("option");
     o0.value = "";
     o0.textContent = senders.length
-      ? "— Choisir un expéditeur —"
-      : "— Aucun expéditeur disponible —";
+      ? "— Choose a sender —"
+      : "— No sender available —";
     sel.appendChild(o0);
     (senders || []).forEach((s) => {
       const o = document.createElement("option");
@@ -890,13 +509,13 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
     if (hint) {
       if (pref && !picked) {
         hint.textContent =
-          "L’adresse enregistrée ne figure pas dans la liste actuelle. Choisissez un expéditeur vérifié côté " +
-          (senders.length ? "fournisseur" : "compte") +
+          "The saved address is not in the current list. Choose a verified sender on " +
+          (senders.length ? "provider" : "account") +
           ".";
         hint.classList.remove("hidden");
       } else {
         hint.textContent =
-          "Adresses autorisées par votre fournisseur (API). Aucune saisie manuelle.";
+          "Addresses authorized by your provider (API). No manual input.";
         hint.classList.remove("hidden");
       }
     }
@@ -920,12 +539,10 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
 
   if (!meta.supportsApi) {
     if (meta.reason === "no_smtp") {
-      applyCampaignFromEmailBlockedMode(
-        "Choisissez d’abord une configuration SMTP.",
-      );
+      applyCampaignFromEmailBlockedMode("Choose an SMTP configuration first.");
       if (hintEl) {
         hintEl.textContent =
-          "Pour Brevo, SendGrid et Amazon SES, l’expéditeur est choisi dans la liste retournée par l’API après sélection du SMTP.";
+          "For Brevo, SendGrid and Amazon SES, the sender is chosen from the list returned by the API after selecting the SMTP.";
         hintEl.classList.remove("hidden");
       }
     } else {
@@ -944,10 +561,10 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
     if (hintEl) {
       const msg =
         meta.provider === "ses"
-          ? "Renseignez les clés IAM et la région SES, puis cliquez sur « Actualiser »."
+          ? 'Fill in the IAM keys and SES region, then click "Refresh".'
           : meta.provider === "sendgrid"
-            ? "Renseignez la clé API SendGrid, puis cliquez sur « Actualiser »."
-            : "Renseignez la clé API Brevo, puis cliquez sur « Actualiser ».";
+            ? 'Fill in the SendGrid API key, then click "Refresh".'
+            : 'Fill in the Brevo API key, then click "Refresh".';
       hintEl.textContent = msg;
       hintEl.classList.remove("hidden");
     }
@@ -956,14 +573,14 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
   }
 
   if (!silent && hintEl) {
-    hintEl.textContent = "Chargement des expéditeurs…";
+    hintEl.textContent = "Loading senders…";
     hintEl.classList.remove("hidden");
   }
 
   try {
     const res = await api("verified_senders", "POST", meta.payload);
     if (!res.success) {
-      throw new Error(res.error || "Erreur API");
+      throw new Error(res.error || "API error");
     }
     const senders = (res.data && res.data.senders) || [];
     applyCampaignFromEmailApiMode(senders, preferredEmail);
@@ -972,7 +589,7 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
         hintEl.classList.toggle("hidden", senders.length > 0);
         hintEl.textContent = senders.length
           ? ""
-          : "Aucun expéditeur listé pour ce compte.";
+          : "No sender listed for this account.";
       } else if (senders.length === 0) {
         const who =
           meta.provider === "ses"
@@ -981,19 +598,18 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
               ? "SendGrid"
               : "Brevo";
         hintEl.textContent =
-          "Aucun expéditeur actif trouvé. Vérifiez votre compte " + who + ".";
+          "No active sender found. Check your " + who + " account.";
         hintEl.classList.remove("hidden");
       } else {
         hintEl.textContent =
-          "Adresses autorisées par votre fournisseur (API). Aucune saisie manuelle.";
+          "Addresses authorized by your provider (API). No manual input.";
         hintEl.classList.remove("hidden");
       }
     }
   } catch (e) {
     applyCampaignFromEmailApiMode([], "");
     if (hintEl) {
-      hintEl.textContent =
-        "Impossible de charger la liste : " + (e.message || String(e));
+      hintEl.textContent = "Unable to load list: " + (e.message || String(e));
       hintEl.classList.remove("hidden");
     }
     if (!silent) console.error(e);
@@ -1001,10 +617,10 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
   refreshCampaignSendButtonState();
 }
 
-/** Panneau libellés (sidebar) : mémorisé entre les visites */
+/** Sidebar labels panel: remembered between visits */
 const SIDEBAR_PANEL_EXPANDED_KEY = "chadmailer_sidebar_panel_expanded";
 
-/** Persistance de la vue (F5 / Ctrl+R) : section, éditeur template, campagnes… */
+/** View persistence (F5 / Ctrl+R): section, template editor, campaigns… */
 const UI_STATE_STORAGE_KEY = "chadmailer_ui_state_v1";
 let uiStateRestoreInProgress = false;
 
@@ -1227,7 +843,7 @@ async function api(action, method = "GET", data = null) {
   if (window.chadMailerNative && window.chadMailerNative.available) {
     return window.chadMailerNative.api(action, method, data);
   }
-  return { success: false, error: "Backend natif Tauri indisponible." };
+  return { success: false, error: "Native Tauri backend unavailable." };
 }
 
 function parseDomainFilters(raw) {
@@ -1250,7 +866,7 @@ const PROXY_SCHEMES = ["http", "https", "socks5", "socks5h"];
  */
 function validateProxyLine(line) {
   const raw = String(line || "").trim();
-  if (!raw) return { ok: false, error: "vide" };
+  if (!raw) return { ok: false, error: "empty" };
   let url;
   if (raw.includes("://")) {
     try {
@@ -1260,10 +876,10 @@ function validateProxyLine(line) {
     }
     const scheme = url.protocol.replace(/:$/, "").toLowerCase();
     if (!PROXY_SCHEMES.includes(scheme)) {
-      return { ok: false, error: `schéma non supporté '${scheme}'` };
+      return { ok: false, error: `unsupported scheme '${scheme}'` };
     }
     if (!url.hostname || !url.port) {
-      return { ok: false, error: "host:port manquant" };
+      return { ok: false, error: "host:port missing" };
     }
     return {
       ok: true,
@@ -1428,7 +1044,7 @@ function refreshProxyListStatus() {
       .slice(0, 3)
       .map((e) => `"${escHtml(e.line)}" (${escHtml(e.error)})`)
       .join("; ");
-    html += `<br><span style="color:#ef4444">Lignes invalides : ${sample}${parsed.invalid.length > 3 ? ", …" : ""}</span>`;
+    html += `<br><span style="color:#ef4444">Invalid rows: ${sample}${parsed.invalid.length > 3 ? ", …" : ""}</span>`;
   }
   statusEl.innerHTML = html;
 }
@@ -1544,7 +1160,7 @@ function fillCsvColumnSelect(selectEl, headers, includeEmptyLabel) {
   selectEl.innerHTML = "";
   const opt0 = document.createElement("option");
   opt0.value = "";
-  opt0.textContent = includeEmptyLabel ? "— Ignorer —" : "— Choisir —";
+  opt0.textContent = includeEmptyLabel ? "— Ignore —" : "— Choose —";
   selectEl.appendChild(opt0);
   (headers || []).forEach((h) => {
     const o = document.createElement("option");
@@ -1591,11 +1207,11 @@ function addCsvCustomVarRow(varName = "", column = "") {
       <input type="text" id="csvVarName_${uid}" class="csv-custom-name" placeholder="ex. ville" value="${escAttr(varName)}" autocomplete="off">
     </div>
     <div class="form-group csv-custom-var-field">
-      <label class="csv-custom-field-label" for="csvVarCol_${uid}">Colonne CSV</label>
-      <select id="csvVarCol_${uid}" class="csv-column-select csv-custom-col"><option value="">— Choisir —</option></select>
+      <label class="csv-custom-field-label" for="csvVarCol_${uid}">CSV column</label>
+      <select id="csvVarCol_${uid}" class="csv-column-select csv-custom-col"><option value="">— Choose —</option></select>
     </div>
     <div class="csv-custom-var-actions">
-      <button type="button" class="csv-custom-remove-btn" title="Retirer cette variable" aria-label="Retirer cette variable">${tyI("trash", 18)}</button>
+      <button type="button" class="csv-custom-remove-btn" title="Remove this variable" aria-label="Remove this variable">${tyI("trash", 18)}</button>
     </div>`;
   list.appendChild(row);
   const sel = row.querySelector("select.csv-custom-col");
@@ -1673,7 +1289,7 @@ async function reparseRecipientsWithCurrentMapping() {
     if (!m || !m.email) {
       state.uploadedTotal = 0;
       setCsvMappingWarning(
-        "Choisissez la colonne qui contient l’adresse e-mail pour compter les destinataires.",
+        "Choose the column that contains the email address to count recipients.",
       );
       const summaryEl = document.getElementById("domainSummary");
       if (summaryEl) {
@@ -1691,7 +1307,7 @@ async function reparseRecipientsWithCurrentMapping() {
 
   const parseRes = await api("parse_recipients", "POST", payload);
   if (!parseRes.success) {
-    alert("Erreur parsing: " + (parseRes.error || ""));
+    alert("Parsing error: " + (parseRes.error || ""));
     return;
   }
   state.uploadedTotal = parseRes.data.total || 0;
@@ -1764,7 +1380,7 @@ function initCsvMappingUI() {
   });
 }
 
-/** Config à fusionner côté serveur : évite d’écraser file_path / SMTP avec des valeurs vides (ex. après parse échoué). */
+/** Config to merge server-side: avoids overwriting file_path / SMTP with empty values (e.g. after a failed parse). */
 function mergeSafeCampaignConfigForPut() {
   const c = collectCampaignConfig();
   if (!c.file_path) delete c.file_path;
@@ -1782,8 +1398,8 @@ function countSelectedTemplates() {
 }
 
 /**
- * Nouvelle campagne : envoi activé seulement après analyse (score ≥ 50 ou lien forcé).
- * Édition : pas besoin de ré-analyser — activer dès que liste + templates + SMTP sont prêts.
+ * New campaign: sending enabled only after analysis (score >= 50 or forced link).
+ * Edit: no need to re-analyze - enable as soon as list + templates + SMTP are ready.
  */
 function refreshCampaignSendButtonState() {
   const sendBtn = document.getElementById("sendBtn");
@@ -1840,7 +1456,7 @@ function refreshCampaignSendButtonState() {
   }
 }
 
-/** Ouvre une section du formulaire campagne (le bouton Envoi est dans « analyze », souvent replié). */
+/** Opens a section of the campaign form (the Send button is in "analyze", often collapsed). */
 function openCampaignFormAccordionSection(dataSection) {
   const form = document.getElementById("campaignForm");
   if (!form) return;
@@ -1948,7 +1564,7 @@ function collectCampaignConfig(extra = {}) {
   return base;
 }
 
-/** Sous-ensemble pour l’API template_preview_merge (liste + filtres). */
+/** Subset for the template_preview_merge API (list + filters). */
 function collectPreviewListConfigOnly() {
   const full = collectCampaignConfig();
   const o = {
@@ -1968,7 +1584,7 @@ function updateUploadFileHint() {
   if (state.uploadedFilePath) {
     const short =
       state.uploadedFilePath.split("/").pop() || state.uploadedFilePath;
-    hint.textContent = `Fichier : ${short} — ${(state.uploadedTotal || 0).toLocaleString("fr-FR")} destinataire(s)`;
+    hint.textContent = `File: ${short} — ${(state.uploadedTotal || 0).toLocaleString("en-US")} recipient(s)`;
     hint.classList.remove("hidden");
   } else {
     hint.textContent = "";
@@ -2254,9 +1870,9 @@ function formatSmtpRoutingLabel(cfg = {}) {
   if (cfg.smtp_rotation_enabled && ids.length > 0) {
     const labels = ids.map((id) => smtpLabelForId(id));
     const mode =
-      cfg.smtp_rotation_mode === "parallel" ? "Parallèle" : "Séquentiel";
+      cfg.smtp_rotation_mode === "parallel" ? "Parallel" : "Sequential";
     const every = Math.max(1, parseInt(cfg.smtp_rotation_every, 10) || 1);
-    return `Rotation ${mode} (x${labels.length}, tous les ${every} e-mail(s)) : ${labels.join(", ")}`;
+    return `Rotation ${mode} (x${labels.length}, every ${every} email(s)): ${labels.join(", ")}`;
   }
   return smtpLabelForId(cfg.smtp_config_id);
 }
@@ -2349,15 +1965,14 @@ function setCampaignFormEditMode(isEdit) {
   const sub = document.getElementById("campaignFormSubtitle");
   const sendBtn = document.getElementById("sendBtn");
   if (banner) banner.classList.toggle("hidden", !isEdit);
-  if (title)
-    title.textContent = isEdit ? "Modifier la campagne" : "Nouvelle campagne";
+  if (title) title.textContent = isEdit ? "Edit campaign" : "New campaign";
   if (sub) {
     sub.textContent = isEdit
-      ? "Ajustez la liste, l’expéditeur, le SMTP ou les templates, enregistrez puis lancez l’envoi pour appliquer les changements."
-      : "Importez une liste, choisissez vos templates, configurez l’expéditeur et le SMTP, puis analysez ou envoyez.";
+      ? "Adjust the list, sender, SMTP or templates, save, then start sending to apply the changes."
+      : "Import a list, choose your templates, configure the sender and SMTP, then analyze or send.";
   }
   if (sendBtn) {
-    const label = isEdit ? "Enregistrer & lancer l’envoi" : "Lancer l’envoi";
+    const label = isEdit ? "Save & start sending" : "Start sending";
     sendBtn.innerHTML =
       tyI("send", 20) +
       '<span class="ty-btn-txt">' +
@@ -2374,9 +1989,7 @@ function resetNewCampaignForm() {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
-  applyCampaignFromEmailBlockedMode(
-    "Choisissez d’abord une configuration SMTP.",
-  );
+  applyCampaignFromEmailBlockedMode("Choose an SMTP configuration first.");
   const delayMin = document.getElementById("delayMin");
   const delayMax = document.getElementById("delayMax");
   if (delayMin) delayMin.value = "1";
@@ -2423,7 +2036,7 @@ function resetNewCampaignForm() {
     if (el)
       el.innerHTML =
         '<option value="">' +
-        (id === "csvEmailColumn" ? "— Choisir —" : "— Ignorer —") +
+        (id === "csvEmailColumn" ? "— Choose —" : "— Ignore —") +
         "</option>";
   });
   updateUploadFileHint();
@@ -2455,7 +2068,7 @@ function resetNewCampaignForm() {
 async function backToCampaignListFromForm() {
   if (state.editingCampaignId) {
     const nameEl = document.getElementById("campaignName");
-    const name = nameEl ? nameEl.value.trim() : "Campagne";
+    const name = nameEl ? nameEl.value.trim() : "Campaign";
     const config = mergeSafeCampaignConfigForPut();
     const putRes = await api(
       "campaign&id=" + encodeURIComponent(state.editingCampaignId),
@@ -2463,7 +2076,7 @@ async function backToCampaignListFromForm() {
       { name, config },
     );
     if (!putRes.success) {
-      alert("Impossible d’enregistrer la campagne : " + (putRes.error || ""));
+      alert("Unable to save campaign: " + (putRes.error || ""));
       return;
     }
   }
@@ -2512,14 +2125,12 @@ function initUploadDragDrop() {
 async function openEditCampaign(campaignId) {
   const res = await api("campaign&id=" + encodeURIComponent(campaignId));
   if (!res.success || !res.data) {
-    alert("Impossible de charger la campagne.");
+    alert("Unable to load campaign.");
     return;
   }
   const c = res.data;
   if (c.status === "running") {
-    alert(
-      "Impossible de modifier une campagne en cours. Mettez-la en pause ou arrêtez-la d’abord.",
-    );
+    alert("Cannot edit a running campaign. Pause or stop it first.");
     return;
   }
 
@@ -2601,9 +2212,7 @@ async function openEditCampaign(campaignId) {
       if (!peekRes.success) {
         state.uploadedFilePath = null;
         state.uploadedTotal = 0;
-        alert(
-          "Le fichier d’origine est introuvable. Importez une nouvelle liste.",
-        );
+        alert("The original file was not found. Import a new list.");
       } else {
         state.csvHeaders = peekRes.data.headers || [];
         showCsvMappingPanel(state.csvHeaders.length > 0);
@@ -2650,9 +2259,7 @@ async function openEditCampaign(campaignId) {
       } else {
         state.uploadedFilePath = null;
         state.uploadedTotal = 0;
-        alert(
-          "Le fichier d’origine est introuvable. Importez une nouvelle liste.",
-        );
+        alert("The original file was not found. Import a new list.");
       }
     }
   } else {
@@ -2685,16 +2292,16 @@ function setSmtpApiKeyUiForProvider(provider, labelId, inputId) {
   const input = document.getElementById(inputId);
   if (!label || !input) return;
   const map = {
-    brevo: { t: "Clé API", ph: "xkeysib-…" },
-    sendgrid: { t: "Clé API SendGrid", ph: "SG.xxx…" },
+    brevo: { t: "API key", ph: "xkeysib-…" },
+    sendgrid: { t: "SendGrid API key", ph: "SG.xxx…" },
     postmark: {
       t: "Jeton serveur Postmark",
       ph: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     },
-    mandrill: { t: "Clé API Mandrill", ph: "md-XXXXXXXX..." },
-    mailgun: { t: "Clé API privée Mailgun", ph: "key-…" },
+    mandrill: { t: "Mandrill API key", ph: "md-XXXXXXXX..." },
+    mailgun: { t: "Mailgun private API key", ph: "key-…" },
   };
-  const m = map[provider] || { t: "Clé API", ph: "…" };
+  const m = map[provider] || { t: "API key", ph: "…" };
   label.textContent = m.t;
   input.placeholder = m.ph;
 }
@@ -2707,7 +2314,7 @@ function applyMicrosoft365SmtpDefaults(hostId, portId, userId) {
     host.value = "smtp.office365.com";
   const pv = port ? String(port.value || "").trim() : "";
   if (port && (!pv || pv === "0")) port.value = "587";
-  if (user) user.placeholder = "adresse@domaine.com (compte Microsoft 365)";
+  if (user) user.placeholder = "address@domain.com (Microsoft 365 account)";
 }
 
 function toggleCampSmtpFields(provider) {
@@ -2733,7 +2340,7 @@ function toggleCampSmtpFields(provider) {
   const cu = document.getElementById("campSmtpUser");
   if (cu) {
     if (provider === "office365")
-      cu.placeholder = "adresse@domaine.com (compte Microsoft 365)";
+      cu.placeholder = "address@domain.com (Microsoft 365 account)";
     else if (provider === "smtp") cu.placeholder = "login SMTP";
   }
 }
@@ -2838,9 +2445,9 @@ async function testCampSmtpInline() {
   });
   const tr = document.getElementById("campSmtpTestResult");
   if (tr) {
-    const err = res.error || "Échec";
+    const err = res.error || "Failed";
     tr.innerHTML = res.success
-      ? tyI("check", 16) + " <span>Connexion réussie</span>"
+      ? tyI("check", 16) + " <span>Connection successful</span>"
       : tyI("x-circle", 16) + " <span>" + escHtml(err) + "</span>";
     tr.style.color = res.success ? "#22c55e" : "#ef4444";
     tr.classList.remove("hidden");
@@ -2849,29 +2456,28 @@ async function testCampSmtpInline() {
 
 async function saveCampSmtpAndUse() {
   const data = collectCampSmtpData();
-  if (!data.name)
-    return alert("Indiquez un nom pour cette configuration SMTP.");
+  if (!data.name) return alert("Enter a name for this SMTP configuration.");
   if (data.provider === "office365") {
     if (!data.username)
       return alert(
-        "Microsoft 365 : l’utilisateur SMTP doit être l’adresse e-mail complète du compte.",
+        "Microsoft 365: the SMTP user must be the account’s full email address.",
       );
     if (!data.password)
       return alert(
-        "Microsoft 365 : le mot de passe (ou mot de passe d’application) est requis.",
+        "Microsoft 365: the password (or app password) is required.",
       );
   }
   if (data.provider === "ses") {
     if (!data.access_key || !data.secret_key) {
       return alert(
-        "Amazon SES : renseignez l’Access Key ID et la Secret Access Key IAM (les deux sont obligatoires).",
+        "Amazon SES: fill in the IAM Access Key ID and Secret Access Key (both are required).",
       );
     }
   }
   const res = await api("smtp_configs", "POST", data);
-  if (!res.success) return alert("Erreur : " + (res.error || ""));
+  if (!res.success) return alert("Error: " + (res.error || ""));
   const newId = res.data && res.data.id;
-  if (!newId) return alert("Réponse serveur inattendue.");
+  if (!newId) return alert("Unexpected server response.");
   await populateSmtpSelect(newId);
   toggleCampaignSmtpNewPanel(false);
   const tr = document.getElementById("campSmtpTestResult");
@@ -3025,7 +2631,7 @@ function updateSidebarPanelToggleUI(expanded) {
   }
   if (toggle) {
     toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    toggle.title = expanded ? "Réduire le panneau" : "Afficher le panneau";
+    toggle.title = expanded ? "Collapse panel" : "Show panel";
   }
 }
 
@@ -3139,16 +2745,16 @@ async function initDashboard() {
   const statsEl = document.getElementById("dashboardStats");
   if (statsEl) {
     statsEl.innerHTML = [
-      { val: totalCampaigns, lbl: "Campagnes", section: "campaigns", cls: "" },
+      { val: totalCampaigns, lbl: "Campaigns", section: "campaigns", cls: "" },
       {
-        val: totalSent.toLocaleString("fr-FR"),
-        lbl: "Emails envoyés",
+        val: totalSent.toLocaleString("en-US"),
+        lbl: "Emails sent",
         section: "campaigns",
         cls: "success",
       },
       {
         val: activeCampaigns,
-        lbl: "En cours",
+        lbl: "Running",
         section: "campaigns",
         cls: activeCampaigns > 0 ? "success" : "",
       },
@@ -3173,10 +2779,10 @@ async function initDashboard() {
         <div class="empty-state-card dashboard-empty-inner">
           <div class="empty-state-icon">${tyI("hexagon", 44)}</div>
           <h2 class="empty-state-title">Bienvenue sur ChadMailer</h2>
-          <p class="empty-state-text">Par où commencer ? Créez un template de courriel, puis une campagne avec votre liste de contacts.</p>
+          <p class="empty-state-text">Where to start? Create an email template, then a campaign with your contact list.</p>
           <div class="dashboard-empty-actions">
-            <button type="button" class="btn-primary btn-with-icon" id="dashEmptyTemplates">${tyI("mail", 18)} Créer un template</button>
-            <button type="button" class="btn-secondary btn-with-icon" id="dashEmptyCampaigns">${tyI("clipboard-list", 18)} Nouvelle campagne</button>
+            <button type="button" class="btn-primary btn-with-icon" id="dashEmptyTemplates">${tyI("mail", 18)} Create a template</button>
+            <button type="button" class="btn-secondary btn-with-icon" id="dashEmptyCampaigns">${tyI("clipboard-list", 18)} New campaign</button>
           </div>
         </div>`;
       document
@@ -3206,7 +2812,7 @@ async function initDashboard() {
       listEl.innerHTML =
         '<div class="recent-empty-hint"><span class="recent-empty-icon" aria-hidden="true">' +
         tyI("clipboard-list", 22) +
-        "</span><p>Aucune campagne récente. Les dernières campagnes apparaîtront ici.</p></div>";
+        "</span><p>No recent campaign. The latest campaigns will appear here.</p></div>";
     } else {
       listEl.innerHTML = recent
         .map((c) => {
@@ -3242,7 +2848,7 @@ async function initDashboard() {
     if (running) {
       widgetEl.classList.remove("hidden");
       widgetEl.innerHTML = `
-        <strong>${escHtml(running.name)}</strong> est en cours.
+        <strong>${escHtml(running.name)}</strong> is running.
         <button class="btn btn-sm" onclick="goToMonitoring('${running.id}')">Voir le monitoring</button>
       `;
     } else {
@@ -3273,7 +2879,7 @@ const TEMPLATE_PREVIEW_SAMPLES = {
   url_rotate: "https://www.example.com/lien-rotatif",
 };
 
-/** Règles HTMLHint assouplies pour fragments e-mail (Handlebars, guillemets simples, etc.) */
+/** Relaxed HTMLHint rules for email fragments (Handlebars, single quotes, etc.) */
 const TEMPLATE_HTMLHINT_RULES = {
   "tagname-lowercase": false,
   "attr-lowercase": false,
@@ -3289,7 +2895,7 @@ const TEMPLATE_HTMLHINT_RULES = {
 let templatePreviewDebounceTimer = null;
 let templateCodeMirror = null;
 let templateCmResizeTimer = null;
-/** Snapshot JSON de l’état enregistré (ou à l’ouverture) pour détecter les changements */
+/** JSON snapshot of the saved state (or at open) to detect changes */
 let templateEditorSavedSnapshot = null;
 let templateSaveToastTimer = null;
 
@@ -3360,7 +2966,7 @@ function templateEditorIsDirty() {
   );
 }
 
-function showTemplateSaveToast(message = "Template enregistré") {
+function showTemplateSaveToast(message = "Template saved") {
   const el = document.getElementById("templateSaveToast");
   if (!el) return;
   el.textContent = message;
@@ -3425,7 +3031,7 @@ function isLikelyFullHtmlDocument(html) {
   return false;
 }
 
-/** Iframe + designMode : préserve le HTML e-mail (Quill le détruisait en le normalisant). */
+/** Iframe + designMode: preserves the email HTML (Quill destroyed it by normalizing). */
 function buildSrcdocForTemplateVisualEdit(html) {
   const raw = html == null ? "" : String(html);
   const trimmed = raw.trim();
@@ -3502,7 +3108,7 @@ function destroyTemplateVisualEditor() {
         d.removeEventListener("keyup", state.templateVisualInputHandler);
       }
     } catch (e) {
-      /* iframe déchargée */
+      /* iframe unloaded */
     }
     state.templateVisualInputHandler = null;
   }
@@ -3603,10 +3209,10 @@ function updateTemplatePreviewHintLine() {
   if (!el) return;
   if (state.templatePreviewUsesRealMerge) {
     el.textContent =
-      "Aperçu avec données réelles — modifiez le HTML puis réappliquez pour mettre à jour.";
+      "Preview with real data - edit the HTML then reapply to refresh.";
   } else {
     el.textContent =
-      "Aperçu avec exemples fictifs — choisissez une campagne (ou le brouillon) et cliquez « Appliquer » pour une vraie ligne.";
+      'Preview with sample data - choose a campaign (or the draft) and click "Apply" for a real row.';
   }
 }
 
@@ -3649,7 +3255,7 @@ async function populateTemplatePreviewCampaignSelect() {
   const campaigns = res.success ? res.data || [] : [];
   const opts = [
     `<option value="">— Exemples fictifs —</option>`,
-    `<option value="${draftVal}">Brouillon actuel (formulaire campagne)</option>`,
+    `<option value="${draftVal}">Current draft (campaign form)</option>`,
   ];
   campaigns.forEach((c) => {
     const id = escAttr(c.id);
@@ -3685,14 +3291,12 @@ async function applyTemplateRealDataPreview() {
   };
 
   if (!campaignId || campaignId === "") {
-    return alert("Choisissez une campagne ou « Brouillon actuel ».");
+    return alert('Choose a campaign or "Current draft".');
   }
   if (campaignId === "__draft__") {
     const pc = collectPreviewListConfigOnly();
     if (!pc.file_path || !String(pc.file_path).trim()) {
-      return alert(
-        "Importez d’abord une liste dans le formulaire campagne (brouillon).",
-      );
+      return alert("First import a list in the campaign form (draft).");
     }
     body.preview_config = pc;
   } else {
@@ -3700,7 +3304,7 @@ async function applyTemplateRealDataPreview() {
   }
 
   const res = await api("template_preview_merge", "POST", body);
-  if (!res.success) return alert(res.error || "Erreur prévisualisation");
+  if (!res.success) return alert(res.error || "Preview error");
 
   const d = res.data || {};
   const subjEl = document.getElementById("templatePreviewSubjectLine");
@@ -3788,7 +3392,7 @@ function refreshTemplateCodeMirrorLayout() {
 
 function applyTemplatePreviewPlaceholders(html) {
   if (!html || !String(html).trim()) {
-    return '<p style="margin:0;padding:28px;font-family:system-ui,sans-serif;font-size:15px;color:#64748b;">Saisissez du HTML à gauche pour afficher l’aperçu ici.</p>';
+    return '<p style="margin:0;padding:28px;font-family:system-ui,sans-serif;font-size:15px;color:#64748b;">Enter HTML on the left to display the preview here.</p>';
   }
 
   let out = String(html);
@@ -3799,21 +3403,21 @@ function applyTemplatePreviewPlaceholders(html) {
       const n = Math.min(24, Math.max(1, parseInt(len, 10) || 6));
       const t = String(type).toUpperCase();
       if (t === "RANDNUM") return "482910".padStart(n, "0").slice(-n);
-      if (t === "RANDALPHA") return "AperçuABCDEFGHIJKL".slice(0, n);
+      if (t === "RANDALPHA") return "PreviewABCDEFGHIJKL".slice(0, n);
       return "a1B2c3D4e5F6g7H8".repeat(2).slice(0, n);
     },
   );
 
   const replaceKnown = (key) => {
     const k = String(key).toLowerCase();
-    if (k === "date") return new Date().toLocaleDateString("fr-FR");
+    if (k === "date") return new Date().toLocaleDateString("en-US");
     if (k === "time") {
-      return new Date().toLocaleTimeString("fr-FR", {
+      return new Date().toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       });
     }
-    if (k === "datetime") return new Date().toLocaleString("fr-FR");
+    if (k === "datetime") return new Date().toLocaleString("en-US");
     if (k === "rotate_url" || k === "url_rotate") {
       const lines = getTemplateRotateUrlsFromTextarea();
       return lines.length ? lines[0] : TEMPLATE_PREVIEW_SAMPLES.rotate_url;
@@ -3851,7 +3455,7 @@ function updateTemplatePreviewLive() {
     doc.write(html);
     doc.close();
   } catch (err) {
-    console.error("Aperçu template", err);
+    console.error("Template preview", err);
   }
 }
 
@@ -3922,8 +3526,7 @@ function openTemplateEditorModal() {
   const titleEl = document.getElementById("templateEditorModalTitle");
   const idEl = document.getElementById("templateId");
   const id = idEl && idEl.value;
-  if (titleEl)
-    titleEl.textContent = id ? "Modifier le template" : "Nouveau template";
+  if (titleEl) titleEl.textContent = id ? "Edit template" : "New template";
   setTemplateCodePhase(false);
   if (modal) {
     modal.classList.remove("hidden");
@@ -4137,8 +3740,8 @@ async function loadTemplates() {
 }
 
 /**
- * Vue racine : dossiers de niveau 0 + templates sans dossier.
- * Vue dossier : breadcrumb + sous-dossiers + templates du dossier courant.
+ * Root view: level-0 folders + templates without a folder.
+ * Folder view: breadcrumb + subfolders + templates in the current folder.
  */
 function renderTemplates(templates) {
   const list = document.getElementById("templatesList");
@@ -4149,17 +3752,17 @@ function renderTemplates(templates) {
   const folders = state.templateFolders || [];
   const currentFolderId = state.currentTemplateFolderId || "";
 
-  // Si on est dans un dossier qui n'existe plus, on ressort automatiquement.
+  // If we're in a folder that no longer exists, exit automatically.
   if (currentFolderId && !folders.some((f) => f.id === currentFolderId)) {
     state.currentTemplateFolderId = "";
     return renderTemplates(templates);
   }
 
-  // Index dossiers par id (pour parent chain).
+  // Index folders by id (for parent chain).
   const folderById = new Map();
   for (const f of folders) folderById.set(f.id, f);
 
-  // Templates par dossier.
+  // Templates by folder.
   const tplsByFolder = new Map();
   const rootTemplates = [];
   for (const t of templates) {
@@ -4172,7 +3775,7 @@ function renderTemplates(templates) {
     }
   }
 
-  // Sous-dossiers directs par parent_id.
+  // Direct subfolders by parent_id.
   const subfoldersByParent = new Map();
   for (const f of folders) {
     const pid = f.parent_id || "";
@@ -4180,10 +3783,10 @@ function renderTemplates(templates) {
     subfoldersByParent.get(pid).push(f);
   }
 
-  // Rendu du breadcrumb (chemin complet).
+  // Render the breadcrumb (full path).
   renderTemplatesBreadcrumb(breadcrumb, currentFolderId, folderById);
 
-  // Empty state — racine vide (ni dossiers, ni templates)
+  // Empty state — empty root (no folders, no templates)
   const rootFolders = subfoldersByParent.get("") || [];
   if (
     !currentFolderId &&
@@ -4196,8 +3799,8 @@ function renderTemplates(templates) {
       emptyEl.innerHTML = `
         <div class="empty-state-card">
           <div class="empty-state-icon" aria-hidden="true">${tyI("mail", 40)}</div>
-          <h2 class="empty-state-title">Aucun modèle pour l’instant</h2>
-          <p class="empty-state-text">Créez un premier template depuis le bouton <strong>New template</strong> en haut à droite.</p>
+          <h2 class="empty-state-title">No template yet</h2>
+          <p class="empty-state-text">Create your first template from the <strong>New template</strong> button at the top right.</p>
         </div>`;
       if (typeof tyHydrateIcons === "function") tyHydrateIcons(emptyEl);
     }
@@ -4230,7 +3833,7 @@ function renderTemplates(templates) {
         const previewSubs = subFolders.slice(0, 2);
         for (const sf of previewSubs) {
           stackItems.push(
-            `<div class="folder-card-stack-item is-subfolder" title="Sous-dossier">${tyI("folder", 12)} ${escHtml(sf.name)}</div>`,
+            `<div class="folder-card-stack-item is-subfolder" title="Subfolder">${tyI("folder", 12)} ${escHtml(sf.name)}</div>`,
           );
         }
       }
@@ -4242,17 +3845,17 @@ function renderTemplates(templates) {
       }
       const stackHtml =
         stackItems.length === 0
-          ? `<div class="folder-card-stack-empty">Glissez un template ou un dossier ici</div>`
+          ? `<div class="folder-card-stack-empty">Drag a template or folder here</div>`
           : stackItems.join("");
 
       const colorHex = folderColorHex(f.color);
       return `
-      <div class="folder-card" data-folder-id="${escAttr(f.id)}" data-color="${escAttr(f.color || "violet")}" style="--folder-color:${colorHex}" draggable="true" tabindex="0" role="button" aria-label="Ouvrir le dossier ${escAttr(f.name)}">
+      <div class="folder-card" data-folder-id="${escAttr(f.id)}" data-color="${escAttr(f.color || "violet")}" style="--folder-color:${colorHex}" draggable="true" tabindex="0" role="button" aria-label="Open folder ${escAttr(f.name)}">
         <div class="folder-card-head">
           <span class="folder-card-icon">${tyI("folder", 18)}</span>
           <span class="folder-card-name">${escHtml(f.name)}</span>
           <span class="folder-card-count">${totalCount}</span>
-          <button type="button" class="folder-card-menu" data-folder-edit="${escAttr(f.id)}" aria-label="Modifier le dossier" title="Modifier le dossier">
+          <button type="button" class="folder-card-menu" data-folder-edit="${escAttr(f.id)}" aria-label="Edit folder" title="Edit folder">
             ${tyI("more-horizontal", 16)}
           </button>
         </div>
@@ -4265,27 +3868,27 @@ function renderTemplates(templates) {
   const templateCardsHtml = displayTemplates
     .map(
       (t) => `
-    <div class="template-card" data-id="${escAttr(t.id)}" draggable="true" data-merge-label="Créer un dossier">
+    <div class="template-card" data-id="${escAttr(t.id)}" draggable="true" data-merge-label="Create a folder">
       <div class="template-card-header">
         <strong>${escHtml(t.name)}</strong>
       </div>
       <div class="template-card-sub">${escHtml(t.subject || "")}</div>
       <div class="template-card-actions">
-        <button type="button" class="btn btn-sm btn-with-icon" onclick="editTemplate('${t.id}')">${tyI("pencil", 15)} Modifier</button>
-        <button type="button" class="btn btn-sm btn-danger btn-with-icon" onclick="deleteTemplate('${t.id}')">${tyI("trash", 15)} Supprimer</button>
+        <button type="button" class="btn btn-sm btn-with-icon" onclick="editTemplate('${t.id}')">${tyI("pencil", 15)} Edit</button>
+        <button type="button" class="btn btn-sm btn-danger btn-with-icon" onclick="deleteTemplate('${t.id}')">${tyI("trash", 15)} Delete</button>
       </div>
     </div>
   `,
     )
     .join("");
 
-  // Dans un dossier vide, on affiche un petit hint de drop.
+  // In an empty folder, show a small drop hint.
   const emptyFolderHint =
     currentFolderId && displayTemplates.length === 0
       ? `<div class="empty-state-card" style="grid-column: 1 / -1;">
          <div class="empty-state-icon" aria-hidden="true">${tyI("folder-open", 40)}</div>
-         <h2 class="empty-state-title">Ce dossier est vide</h2>
-         <p class="empty-state-text">Retournez à « Tous les templates » puis glissez des letters ici.</p>
+         <h2 class="empty-state-title">This folder is empty</h2>
+         <p class="empty-state-text">Go back to "All templates" then drag templates here.</p>
        </div>`
       : "";
 
@@ -4298,7 +3901,7 @@ function renderTemplates(templates) {
 }
 
 /**
- * Construit le fil d'Ariane (chemin du dossier courant, cliquable, cibles de drop).
+ * Builds the breadcrumb (current folder path, clickable, drop targets).
  * @param {HTMLElement|null} breadcrumb
  * @param {string} currentFolderId
  * @param {Map<string, any>} folderById
@@ -4311,7 +3914,7 @@ function renderTemplatesBreadcrumb(breadcrumb, currentFolderId, folderById) {
     return;
   }
 
-  // Remonter la chaîne des parents jusqu'à la racine.
+  // Walk up the parent chain to the root.
   const chain = [];
   let cur = folderById.get(currentFolderId);
   const guard = new Set();
@@ -4324,7 +3927,7 @@ function renderTemplatesBreadcrumb(breadcrumb, currentFolderId, folderById) {
   let html = `
     <button type="button" class="templates-breadcrumb-root" id="templatesBreadcrumbRoot" data-drop-folder="">
       ${tyI("arrow-left", 16)}
-      <span>Tous les templates</span>
+      <span>All templates</span>
     </button>
   `;
   chain.forEach((f, idx) => {
@@ -4336,7 +3939,7 @@ function renderTemplatesBreadcrumb(breadcrumb, currentFolderId, folderById) {
       html += `<button type="button" class="templates-breadcrumb-crumb" data-folder-id="${escAttr(f.id)}" data-drop-folder="${escAttr(f.id)}" style="--folder-color:${folderColorHex(f.color)}">${escHtml(f.name)}</button>`;
     }
   });
-  html += `<span class="templates-breadcrumb-hint" id="templatesBreadcrumbHint">Glissez un élément ici pour le déplacer</span>`;
+  html += `<span class="templates-breadcrumb-hint" id="templatesBreadcrumbHint">Drag an item here to move it</span>`;
 
   breadcrumb.innerHTML = html;
   breadcrumb.classList.remove("hidden");
@@ -4352,7 +3955,7 @@ function renderTemplatesBreadcrumb(breadcrumb, currentFolderId, folderById) {
   });
 }
 
-/** Palette prédéfinie de couleurs de dossier. */
+/** Predefined folder color palette. */
 const FOLDER_COLOR_PRESETS = {
   violet: "#7c3aed",
   blue: "#3b82f6",
@@ -4363,7 +3966,7 @@ const FOLDER_COLOR_PRESETS = {
   slate: "#64748b",
 };
 
-/** Retourne une couleur hex à partir d'une valeur stockée (nom de preset ou hex). */
+/** Returns a hex color from a stored value (preset name or hex). */
 function folderColorHex(value) {
   if (!value) return FOLDER_COLOR_PRESETS.violet;
   const raw = String(value).trim();
@@ -4372,10 +3975,10 @@ function folderColorHex(value) {
 }
 
 /**
- * Active le drag & drop natif sur toutes les cartes rendues.
- * - Glisser un template sur un dossier = le déplacer dedans
- * - Glisser un template sur un autre template (600 ms) = créer un dossier qui contient les deux
- * - Glisser un template vers la breadcrumb (mode dossier) = le sortir du dossier
+ * Enables native drag & drop on all rendered cards.
+ * - Drag a template onto a folder = move it inside
+ * - Drag a template onto another template (600 ms) = create a folder containing both
+ * - Drag a template onto the breadcrumb (folder mode) = move it out of the folder
  */
 function bindTemplateDragAndDrop(list) {
   const cards = list.querySelectorAll(".template-card");
@@ -4431,7 +4034,7 @@ function bindTemplateDragAndDrop(list) {
       resetDrag();
     });
 
-    // Hover sur un autre template → timer pour créer un dossier.
+    // Hover over another template -> timer to create a folder.
     card.addEventListener("dragover", (e) => {
       const dragging = state.templateDnd.draggingId;
       const kind = state.templateDnd.draggingKind;
@@ -4499,7 +4102,7 @@ function bindTemplateDragAndDrop(list) {
       const dragging = state.templateDnd.draggingId;
       const kind = state.templateDnd.draggingKind;
       if (!dragging) return;
-      // Un dossier ne peut pas être glissé sur lui-même.
+      // A folder cannot be dragged onto itself.
       if (kind === "folder" && dragging === folder.dataset.folderId) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
@@ -4532,7 +4135,7 @@ function bindTemplateDragAndDrop(list) {
         const dragging = state.templateDnd.draggingId;
         if (!dragging) return;
         const targetId = el.dataset.dropFolder || "";
-        // Pas de sens de déposer un dossier sur lui-même.
+        // No point dropping a folder onto itself.
         if (
           state.templateDnd.draggingKind === "folder" &&
           dragging === targetId
@@ -4568,7 +4171,7 @@ function bindTemplateDragAndDrop(list) {
 function bindFolderCardInteractions(list) {
   list.querySelectorAll(".folder-card").forEach((folder) => {
     folder.addEventListener("click", (e) => {
-      // Ignorer le clic s'il provenait du bouton de menu
+      // Ignore the click if it came from the menu button
       if (e.target.closest("[data-folder-edit]")) return;
       enterTemplateFolder(folder.dataset.folderId);
     });
@@ -4610,10 +4213,7 @@ async function moveTemplateToFolder(templateId, folderId) {
     folder_id: folderId || null,
   });
   if (!res.success) {
-    alert(
-      "Impossible de déplacer le template : " +
-        (res.error || "erreur inconnue"),
-    );
+    alert("Unable to move template: " + (res.error || "unknown error"));
     return;
   }
   await loadTemplates();
@@ -4626,9 +4226,7 @@ async function moveFolderToFolder(folderId, parentId) {
     parent_id: parentId || null,
   });
   if (!res.success) {
-    alert(
-      "Impossible de déplacer le dossier : " + (res.error || "erreur inconnue"),
-    );
+    alert("Unable to move folder: " + (res.error || "unknown error"));
     return;
   }
   await loadTemplates();
@@ -4642,8 +4240,8 @@ async function createFolderFromMerge(templateAId, templateBId) {
     (x) => String(x.id) === String(templateBId),
   );
   const defaultName =
-    a && b ? `Dossier ${a.name} & ${b.name}`.slice(0, 40) : "Nouveau dossier";
-  const name = prompt("Nom du nouveau dossier :", defaultName);
+    a && b ? `Folder ${a.name} & ${b.name}`.slice(0, 40) : "New folder";
+  const name = prompt("New folder name:", defaultName);
   if (name === null) return;
   const trimmed = name.trim();
   if (!trimmed) return;
@@ -4655,7 +4253,7 @@ async function createFolderFromMerge(templateAId, templateBId) {
     parent_id: parentId,
   });
   if (!createRes.success || !createRes.data || !createRes.data.id) {
-    alert("Erreur création dossier : " + (createRes.error || ""));
+    alert("Folder creation error: " + (createRes.error || ""));
     return;
   }
   const newFolderId = createRes.data.id;
@@ -4755,14 +4353,13 @@ function openFolderEditDialog(folder) {
     color: folder ? folder.color || "violet" : "violet",
   };
   const title = document.getElementById("folderEditDialogTitle");
-  if (title)
-    title.textContent = folder ? "Renommer le dossier" : "Nouveau dossier";
+  if (title) title.textContent = folder ? "Rename folder" : "New folder";
   const nameInput = document.getElementById("folderEditName");
   if (nameInput) {
     nameInput.value = folder ? folder.name : "";
     setTimeout(() => nameInput.focus(), 40);
   }
-  // Pré-remplir le color-picker natif avec la couleur hex équivalente.
+  // Pre-fill the native color picker with the equivalent hex color.
   const customInput = document.getElementById("folderColorCustom");
   if (customInput) customInput.value = folderColorHex(_folderEditCtx.color);
   selectFolderColorSwatch(_folderEditCtx.color);
@@ -4786,7 +4383,7 @@ async function handleFolderEditSave() {
   const name = (document.getElementById("folderEditName") || {}).value || "";
   const trimmed = name.trim();
   if (!trimmed) {
-    alert("Le nom du dossier est requis.");
+    alert("Folder name is required.");
     return;
   }
   const payload = {
@@ -4796,12 +4393,12 @@ async function handleFolderEditSave() {
   if (_folderEditCtx.id) {
     payload.id = _folderEditCtx.id;
   } else {
-    // À la création, ancrer le nouveau dossier dans le dossier courant.
+    // On creation, anchor the new folder in the current folder.
     payload.parent_id = state.currentTemplateFolderId || null;
   }
   const res = await api("template_folders", "POST", payload);
   if (!res.success) {
-    alert("Erreur sauvegarde : " + (res.error || ""));
+    alert("Save error: " + (res.error || ""));
     return;
   }
   closeFolderEditDialog();
@@ -4812,7 +4409,7 @@ async function handleFolderEditDelete() {
   if (!_folderEditCtx || !_folderEditCtx.id) return;
   if (
     !confirm(
-      "Supprimer ce dossier ? Les templates qu’il contient retourneront à la racine.",
+      "Delete this folder? The templates it contains will return to the root.",
     )
   )
     return;
@@ -4821,10 +4418,10 @@ async function handleFolderEditDelete() {
     "DELETE",
   );
   if (!res.success) {
-    alert("Erreur suppression : " + (res.error || ""));
+    alert("Deletion error: " + (res.error || ""));
     return;
   }
-  // Si on était à l'intérieur de ce dossier, remonter à la racine.
+  // If we were inside this folder, go back up to the root.
   if (state.currentTemplateFolderId === _folderEditCtx.id) {
     state.currentTemplateFolderId = "";
   }
@@ -4865,7 +4462,7 @@ function clearTemplateForm() {
 
 async function editTemplate(id) {
   const res = await api("template&id=" + id);
-  if (!res.success) return alert("Impossible de charger le template.");
+  if (!res.success) return alert("Unable to load template.");
   const t = res.data;
   const setVal = (elId, val) => {
     const el = document.getElementById(elId);
@@ -4908,11 +4505,11 @@ async function saveTemplate(options = {}) {
     ) || 1,
   );
 
-  if (!name) return alert("Le nom du template est requis.");
+  if (!name) return alert("Template name is required.");
 
-  // Détermine le dossier cible :
-  //  - En édition : on conserve le folder_id actuel du template (ne pas le remettre à la racine)
-  //  - En création : si l'utilisateur est dans un dossier, on y crée le nouveau template
+  // Determine the target folder:
+  //  - On edit: keep the template's current folder_id (don't move it back to the root)
+  //  - On creation: if the user is in a folder, create the new template there
   let folderId = null;
   if (id) {
     const existing = (state.templates || []).find(
@@ -4939,15 +4536,14 @@ async function saveTemplate(options = {}) {
     res = await api("templates", "POST", body);
   }
 
-  if (!res.success)
-    return alert("Erreur lors de la sauvegarde : " + (res.error || ""));
+  if (!res.success) return alert("Error while saving: " + (res.error || ""));
 
   const savedId = res.data && res.data.id;
   if (savedId) {
     const hid = document.getElementById("templateId");
     if (hid) hid.value = savedId;
     const titleEl = document.getElementById("templateEditorModalTitle");
-    if (titleEl) titleEl.textContent = "Modifier le template";
+    if (titleEl) titleEl.textContent = "Edit template";
   }
 
   markTemplateEditorClean();
@@ -4962,9 +4558,9 @@ async function saveTemplate(options = {}) {
 }
 
 async function deleteTemplate(id) {
-  if (!confirm("Supprimer ce template ?")) return;
+  if (!confirm("Delete this template?")) return;
   const res = await api("template&id=" + id, "DELETE");
-  if (!res.success) return alert("Erreur lors de la suppression.");
+  if (!res.success) return alert("Error while deleting.");
   await loadTemplates();
 }
 
@@ -5033,7 +4629,7 @@ async function initCampaigns() {
     analyzeBtn.addEventListener("click", handleAnalyze);
   }
 
-  // Send button → résumé puis confirmation
+  // Send button -> summary then confirmation
   const sendBtn = document.getElementById("sendBtn");
   if (sendBtn) {
     sendBtn.addEventListener("click", () => openSendSummaryModal(false));
@@ -5057,7 +4653,7 @@ async function initCampaigns() {
     if (sm && !sm.classList.contains("hidden")) closeSendSummaryModal();
   });
 
-  // Force send → même résumé avec avertissement score
+  // Force send -> same summary with score warning
   const forceSendLink = document.getElementById("forceSendLink");
   if (forceSendLink) {
     forceSendLink.addEventListener("click", (e) => {
@@ -5104,8 +4700,8 @@ function renderCampaignsList(campaigns) {
       emptyEl.innerHTML = `
         <div class="empty-state-card">
           <div class="empty-state-icon" aria-hidden="true">${tyI("clipboard-list", 40)}</div>
-          <h2 class="empty-state-title">Aucune campagne</h2>
-          <p class="empty-state-text">Créez une nouvelle campagne depuis le bouton <strong>New campaign</strong> en haut à droite.</p>
+          <h2 class="empty-state-title">No campaign</h2>
+          <p class="empty-state-text">Create a new campaign from the <strong>New campaign</strong> button at the top right.</p>
         </div>`;
       if (typeof tyHydrateIcons === "function") tyHydrateIcons(emptyEl);
     }
@@ -5118,13 +4714,13 @@ function renderCampaignsList(campaigns) {
   }
 
   const statusMeta = {
-    running: { icon: "activity", text: "En cours", cls: "running" },
-    completed: { icon: "check-circle", text: "Terminée", cls: "done" },
-    done: { icon: "check-circle", text: "Terminée", cls: "done" },
-    failed: { icon: "x-circle", text: "Échouée", cls: "failed" },
-    stopped: { icon: "square", text: "Arrêtée", cls: "done" },
+    running: { icon: "activity", text: "Running", cls: "running" },
+    completed: { icon: "check-circle", text: "Completed", cls: "done" },
+    done: { icon: "check-circle", text: "Completed", cls: "done" },
+    failed: { icon: "x-circle", text: "Failed", cls: "failed" },
+    stopped: { icon: "square", text: "Stopped", cls: "done" },
     interrupted: { icon: "alert-triangle", text: "Interrompue", cls: "failed" },
-    pending: { icon: "clock", text: "En attente", cls: "pending" },
+    pending: { icon: "clock", text: "Pending", cls: "pending" },
   };
 
   list.innerHTML = campaigns
@@ -5132,11 +4728,11 @@ function renderCampaignsList(campaigns) {
       const stats = c.stats || {};
       const sm = statusMeta[c.status] || {
         icon: null,
-        text: c.status || "Inconnue",
+        text: c.status || "Unknown",
         cls: "done",
       };
       const date = c.created_at
-        ? new Date(c.created_at).toLocaleDateString("fr-FR", {
+        ? new Date(c.created_at).toLocaleDateString("en-US", {
             day: "2-digit",
             month: "short",
             year: "numeric",
@@ -5157,15 +4753,15 @@ function renderCampaignsList(campaigns) {
           </div>
           <div class="campaign-card-stats">
             <div class="campaign-stat-item">
-              <span class="campaign-stat-val success">${(stats.sent || 0).toLocaleString("fr-FR")}</span>
-              <span class="campaign-stat-lbl">Envoyés</span>
+              <span class="campaign-stat-val success">${(stats.sent || 0).toLocaleString("en-US")}</span>
+              <span class="campaign-stat-lbl">Sent</span>
             </div>
             <div class="campaign-stat-item">
-              <span class="campaign-stat-val danger">${(stats.failed || 0).toLocaleString("fr-FR")}</span>
-              <span class="campaign-stat-lbl">Échecs</span>
+              <span class="campaign-stat-val danger">${(stats.failed || 0).toLocaleString("en-US")}</span>
+              <span class="campaign-stat-lbl">Failed</span>
             </div>
             <div class="campaign-stat-item">
-              <span class="campaign-stat-val muted">${(stats.total || 0).toLocaleString("fr-FR")}</span>
+              <span class="campaign-stat-val muted">${(stats.total || 0).toLocaleString("en-US")}</span>
               <span class="campaign-stat-lbl">Total</span>
             </div>
             ${
@@ -5181,16 +4777,16 @@ function renderCampaignsList(campaigns) {
         </div>
         <div class="campaign-card-footer" onclick="event.stopPropagation()">
           <button type="button" class="btn btn-sm btn-with-icon" onclick="showCampaignDetail('${id}')">
-            ${c.status === "running" ? tyI("radio", 16) + " Monitoring live" : tyI("list", 16) + " Voir les logs"}
+            ${c.status === "running" ? tyI("radio", 16) + " Monitoring live" : tyI("list", 16) + " View logs"}
           </button>
           ${
             c.status !== "running"
-              ? `<button type="button" class="btn btn-sm btn-primary btn-with-icon" onclick="event.stopPropagation(); openEditCampaign('${id}')">${tyI("pencil", 15)} Modifier</button>
-          <button type="button" class="btn btn-sm btn-with-icon" onclick="event.stopPropagation(); relaunchCampaign('${id}')">${tyI("refresh-cw", 15)} Relancer</button>`
+              ? `<button type="button" class="btn btn-sm btn-primary btn-with-icon" onclick="event.stopPropagation(); openEditCampaign('${id}')">${tyI("pencil", 15)} Edit</button>
+          <button type="button" class="btn btn-sm btn-with-icon" onclick="event.stopPropagation(); relaunchCampaign('${id}')">${tyI("refresh-cw", 15)} Relaunch</button>`
               : ""
           }
           <span class="btn-spacer"></span>
-          <button type="button" class="btn btn-sm btn-danger btn-with-icon" title="Supprimer" aria-label="Supprimer la campagne" onclick="deleteCampaignCard('${id}')">${tyI("trash", 16)}</button>
+          <button type="button" class="btn btn-sm btn-danger btn-with-icon" title="Delete" aria-label="Delete campaign" onclick="deleteCampaignCard('${id}')">${tyI("trash", 16)}</button>
         </div>
       </div>
     `;
@@ -5250,8 +4846,8 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   state.smtpConfigs = res.data || [];
 
   const opts = [
-    '<option value="">— Choisir un SMTP —</option>',
-    '<option value="__new__">+ Nouveau SMTP (créer et utiliser)</option>',
+    '<option value="">— Choose an SMTP —</option>',
+    '<option value="__new__">+ New SMTP (create and use)</option>',
     ...state.smtpConfigs.map((s) => {
       const id = String(s.id).replace(/"/g, "&quot;");
       return `<option value="${id}">${escHtml(s.name || s.host || "Config " + s.id)}</option>`;
@@ -5293,7 +4889,7 @@ async function handleFileUpload() {
   const ext = file.name.split(".").pop().toLowerCase();
   if (["xlsx", "xls"].includes(ext)) {
     alert(
-      "Les fichiers Excel ne sont pas pris en charge. Exportez votre table en CSV (une ligne d’en-têtes + une ligne par contact).",
+      "Excel files are not supported. Export your table as CSV (one header row + one row per contact).",
     );
     input.value = "";
     return;
@@ -5308,7 +4904,7 @@ async function handleFileUpload() {
       bytes,
     });
 
-    if (!data.success) return alert("Erreur upload: " + (data.error || ""));
+    if (!data.success) return alert("Upload error: " + (data.error || ""));
 
     state.uploadedFilePath = data.data.filepath;
     state.uploadedFileType = data.data.file_type || fileType;
@@ -5323,7 +4919,7 @@ async function handleFileUpload() {
         file_type: "txt",
       });
       if (!parseRes.success)
-        return alert("Erreur parsing: " + (parseRes.error || ""));
+        return alert("Parsing error: " + (parseRes.error || ""));
 
       state.uploadedTotal = parseRes.data.total || 0;
       const domains = parseRes.data.domains || {};
@@ -5368,15 +4964,15 @@ async function handleFileUpload() {
     updateUploadFileHint();
     refreshCampaignSendButtonState();
   } catch (err) {
-    alert("Erreur lors de l'upload: " + err.message);
+    alert("Error during upload: " + err.message);
   }
 }
 
 async function handleAnalyze() {
   const cfg = collectCampaignConfig();
   if (cfg.template_ids.length === 0)
-    return alert("Sélectionnez au moins un template.");
-  if (!hasUsableFromEmail(cfg)) return alert("Choisissez un email expéditeur.");
+    return alert("Select at least one template.");
+  if (!hasUsableFromEmail(cfg)) return alert("Choose a sender email.");
 
   const res = await api("score", "POST", {
     template_ids: cfg.template_ids,
@@ -5386,7 +4982,7 @@ async function handleAnalyze() {
     },
   });
 
-  if (!res.success) return alert("Erreur analyse: " + (res.error || ""));
+  if (!res.success) return alert("Analysis error: " + (res.error || ""));
 
   state.scoreData = res.data;
 
@@ -5401,24 +4997,23 @@ async function handleAnalyze() {
 
 function validateCampaignBeforeSend(force = false) {
   const config = collectCampaignConfig({ force_send: force });
-  if (config.template_ids.length === 0)
-    return "Sélectionnez au moins un template.";
+  if (config.template_ids.length === 0) return "Select at least one template.";
   if (config.smtp_rotation_enabled) {
     if (
       !Array.isArray(config.smtp_rotation_ids) ||
       config.smtp_rotation_ids.length === 0
     ) {
-      return "Sélectionnez au moins un SMTP pour la rotation.";
+      return "Select at least one SMTP for rotation.";
     }
   } else if (!config.smtp_config_id) {
     const sel = document.getElementById("smtpConfigSelect");
     if (sel && sel.value === "__new__") {
-      return "Enregistrez d’abord le nouveau SMTP (« Enregistrer & utiliser pour cette campagne »), ou sélectionnez une configuration existante.";
+      return 'Save the new SMTP first ("Save & use for this campaign"), or select an existing configuration.';
     }
-    return "Choisissez une configuration SMTP.";
+    return "Choose an SMTP configuration.";
   }
   if (!hasUsableFromEmail(config))
-    return "Choisissez un email expéditeur (liste API ou saisie libre selon le fournisseur).";
+    return "Choose a sender email (API list or manual entry depending on the provider).";
   if (config.smtp_sender_mode === "per_smtp") {
     const per =
       config.smtp_per_smtp && typeof config.smtp_per_smtp === "object"
@@ -5428,21 +5023,21 @@ function validateCampaignBeforeSend(force = false) {
     for (const id of ids) {
       const row = per[id];
       if (!row || typeof row !== "object") {
-        return "Configurez le sender par SMTP, ou repassez en sender par défaut.";
+        return "Configure the per-SMTP sender, or switch back to the default sender.";
       }
       if (
         row.use_default_from === false &&
         !String(row.from_email || "").trim()
       ) {
-        return `Renseignez un From email pour le SMTP ${smtpLabelForId(id)} (ou cochez "Use default From email").`;
+        return `Fill in a From email for the SMTP ${smtpLabelForId(id)} (or check "Use default From email").`;
       }
     }
   }
   if (!config.file_path)
-    return "Importez une liste de destinataires (ou rouvrez la campagne si le fichier a été perdu).";
+    return "Import a recipient list (or reopen the campaign if the file was lost).";
   if (!state.editingCampaignId) {
     if (!force && (!state.scoreData || state.scoreData.score < 50)) {
-      return "Lancez d’abord l’analyse de délivrabilité, ou utilisez « Envoyer quand même » si vous acceptez le risque.";
+      return 'Run the deliverability analysis first, or use "Send anyway" if you accept the risk.';
     }
   }
   return null;
@@ -5496,14 +5091,14 @@ function showCampaignDoneNotification(name, status) {
   )
     return;
   const labels = {
-    completed: "terminée avec succès",
-    failed: "en échec",
-    stopped: "arrêtée",
+    completed: "completed successfully",
+    failed: "failed",
+    stopped: "stopped",
     interrupted: "interrompue",
   };
-  const body = `« ${name || "Campagne"} » : ${labels[status] || status}.`;
+  const body = `"${name || "Campaign"}": ${labels[status] || status}.`;
   try {
-    new Notification("ChadMailer — Envoi terminé", {
+    new Notification("ChadMailer — Sending completed", {
       body,
       tag: "tydra-end-" + status,
       requireInteraction: false,
@@ -5545,7 +5140,7 @@ async function openSendSummaryModal(forceSend = false) {
   const name =
     nameEl && nameEl.value.trim()
       ? nameEl.value.trim()
-      : "Campagne " + Date.now();
+      : "Campaign " + Date.now();
   const config = collectCampaignConfig({ force_send: forceSend });
   const chips = Array.from(
     document.querySelectorAll(".template-chip.selected"),
@@ -5566,14 +5161,14 @@ async function openSendSummaryModal(forceSend = false) {
 
   const scoreBlock =
     state.scoreData && typeof state.scoreData.score === "number"
-      ? `<div class="send-summary-score ${state.scoreData.score < 50 ? "send-summary-score--warn" : ""}">Score délivrabilité : <strong>${state.scoreData.score}</strong>/100</div>`
+      ? `<div class="send-summary-score ${state.scoreData.score < 50 ? "send-summary-score--warn" : ""}">Deliverability score: <strong>${state.scoreData.score}</strong>/100</div>`
       : state.editingCampaignId
-        ? '<p class="send-summary-note">Campagne existante — score non recalculé dans ce résumé.</p>'
+        ? '<p class="send-summary-note">Existing campaign - score not recalculated in this summary.</p>'
         : "";
 
   const forceWarn =
     forceSend && state.scoreData && state.scoreData.score < 50
-      ? '<p class="send-summary-warning"><strong>Envoi forcé</strong> : le score est sous le seuil recommandé.</p>'
+      ? '<p class="send-summary-warning"><strong>Forced send</strong>: the score is below the recommended threshold.</p>'
       : "";
 
   const notifyHint = document.getElementById("sendSummaryNotifyHint");
@@ -5590,14 +5185,14 @@ async function openSendSummaryModal(forceSend = false) {
       ${scoreBlock}
       <ul class="send-summary-list">
         <li><span>Nom</span><strong>${escHtml(name)}</strong></li>
-        <li><span>Destinataires (fichier)</span><strong>${total.toLocaleString("fr-FR")}</strong></li>
+        <li><span>Recipients (file)</span><strong>${total.toLocaleString("en-US")}</strong></li>
         <li><span>Templates</span><strong>${templateNames.length ? escHtml(templateNames.join(", ")) : "—"}</strong></li>
-        <li><span>Expéditeur</span><strong>${escHtml(formatSenderRoutingLabel(config))}</strong></li>
+        <li><span>Sender</span><strong>${escHtml(formatSenderRoutingLabel(config))}</strong></li>
         <li><span>SMTP</span><strong>${escHtml(formatSmtpRoutingLabel(config))}</strong></li>
-        <li><span>Délai entre e-mails</span><strong>${delayMin}–${delayMax} s (moy. ${avgDelay.toFixed(1)} s${config.smtp_rotation_enabled && config.smtp_rotation_mode === "parallel" ? ", par SMTP" : ""})</strong></li>
-        <li><span>Durée estimée (ordre de grandeur)</span><strong>${formatEtaSeconds(etaLow)} — ${formatEtaSeconds(etaHigh)}</strong></li>
-        <li><span>Rotation templates</span><strong>tous les ${config.template_rotation_frequency || 1} e-mail(s)</strong></li>
-        <li><span>Fichier liste</span><strong>${escHtml((config.file_path || "").split("/").pop() || "—")}</strong></li>
+        <li><span>Delay between emails</span><strong>${delayMin}–${delayMax} s (avg. ${avgDelay.toFixed(1)} s${config.smtp_rotation_enabled && config.smtp_rotation_mode === "parallel" ? ", per SMTP" : ""})</strong></li>
+        <li><span>Estimated duration (rough)</span><strong>${formatEtaSeconds(etaLow)} — ${formatEtaSeconds(etaHigh)}</strong></li>
+        <li><span>Template rotation</span><strong>every ${config.template_rotation_frequency || 1} email(s)</strong></li>
+        <li><span>List file</span><strong>${escHtml((config.file_path || "").split("/").pop() || "—")}</strong></li>
       </ul>
     `;
   }
@@ -5643,19 +5238,19 @@ async function confirmSendSummaryAndRun() {
       { name, config },
     );
     if (!putRes.success)
-      return alert("Erreur mise à jour campagne : " + (putRes.error || ""));
+      return alert("Campaign update error: " + (putRes.error || ""));
     campaignId = state.editingCampaignId;
   } else {
     const createRes = await api("campaigns", "POST", { name, config });
     if (!createRes.success)
-      return alert("Erreur création campagne : " + (createRes.error || ""));
+      return alert("Campaign creation error: " + (createRes.error || ""));
     campaignId = createRes.data && createRes.data.id;
-    if (!campaignId) return alert("Impossible de récupérer l'ID de campagne.");
+    if (!campaignId) return alert("Unable to retrieve campaign ID.");
   }
 
   state.currentCampaignId = campaignId;
   const sendRes = await api("send", "POST", { campaign_id: campaignId });
-  if (!sendRes.success) return alert("Erreur envoi : " + (sendRes.error || ""));
+  if (!sendRes.success) return alert("Send error: " + (sendRes.error || ""));
 
   startCampaignCompletionWatch(campaignId, name);
 
@@ -5687,14 +5282,14 @@ async function showCampaignDetail(campaignId) {
   // Clear logs
   const logsContainer = document.getElementById("detailLogsContainer");
   if (logsContainer)
-    logsContainer.innerHTML = '<div class="log-line info">Chargement...</div>';
+    logsContainer.innerHTML = '<div class="log-line info">Loading...</div>';
 
   // Load campaign with logs
   const res = await api("campaign&id=" + campaignId + "&with_logs");
   if (!res.success || !res.data) {
     if (logsContainer)
       logsContainer.innerHTML =
-        '<div class="log-line failed">Impossible de charger la campagne.</div>';
+        '<div class="log-line failed">Unable to load campaign.</div>';
     return;
   }
 
@@ -5704,20 +5299,20 @@ async function showCampaignDetail(campaignId) {
 
   // Header
   const nameEl = document.getElementById("detailCampaignName");
-  if (nameEl) nameEl.textContent = campaign.name || "Campagne";
+  if (nameEl) nameEl.textContent = campaign.name || "Campaign";
 
   const statusMeta = {
-    running: { icon: "activity", text: "En cours", color: "#22c55e" },
-    completed: { icon: "check-circle", text: "Terminée", color: "#64748b" },
-    done: { icon: "check-circle", text: "Terminée", color: "#64748b" },
-    failed: { icon: "x-circle", text: "Échouée", color: "#ef4444" },
-    stopped: { icon: "square", text: "Arrêtée", color: "#f59e0b" },
+    running: { icon: "activity", text: "Running", color: "#22c55e" },
+    completed: { icon: "check-circle", text: "Completed", color: "#64748b" },
+    done: { icon: "check-circle", text: "Completed", color: "#64748b" },
+    failed: { icon: "x-circle", text: "Failed", color: "#ef4444" },
+    stopped: { icon: "square", text: "Stopped", color: "#f59e0b" },
     interrupted: {
       icon: "alert-triangle",
       text: "Interrompue",
       color: "#f59e0b",
     },
-    pending: { icon: "clock", text: "En attente", color: "#64748b" },
+    pending: { icon: "clock", text: "Pending", color: "#64748b" },
   };
   const sm = statusMeta[campaign.status] || {
     icon: null,
@@ -5740,9 +5335,9 @@ async function showCampaignDetail(campaignId) {
   if (metaBar) {
     const fromLine = escHtml(formatSenderRoutingLabel(cfg));
     metaBar.innerHTML = `
-      <span><strong>De :</strong> ${fromLine}</span>
+      <span><strong>From:</strong> ${fromLine}</span>
       <span><strong>SMTP :</strong> ${escHtml(formatSmtpRoutingLabel(cfg))}</span>
-      <span><strong>Liste :</strong> ${escHtml((cfg.file_path || "").split("/").pop() || "—")}</span>
+      <span><strong>List:</strong> ${escHtml((cfg.file_path || "").split("/").pop() || "—")}</span>
     `;
     metaBar.classList.remove("hidden");
   }
@@ -5753,7 +5348,7 @@ async function showCampaignDetail(campaignId) {
       editHint.classList.add("hidden");
     } else {
       editHint.textContent =
-        "Pour changer la liste, l’expéditeur ou le SMTP avant un nouvel envoi, utilisez « Modifier la campagne ».";
+        'To change the list, sender or SMTP before a new send, use "Edit campaign".';
       editHint.classList.remove("hidden");
     }
   }
@@ -5777,8 +5372,8 @@ async function showCampaignDetail(campaignId) {
         .addEventListener("click", handleStop);
     } else {
       actionsEl.innerHTML = `
-        <button type="button" class="btn-primary btn-with-icon" onclick="openEditCampaign('${cid}')">${tyI("pencil", 16)} Modifier la campagne</button>
-        <button type="button" class="btn-secondary btn-with-icon" onclick="relaunchCampaign('${cid}')">${tyI("refresh-cw", 16)} Relancer tel quel</button>
+        <button type="button" class="btn-primary btn-with-icon" onclick="openEditCampaign('${cid}')">${tyI("pencil", 16)} Edit campaign</button>
+        <button type="button" class="btn-secondary btn-with-icon" onclick="relaunchCampaign('${cid}')">${tyI("refresh-cw", 16)} Relaunch as is</button>
       `;
     }
   }
@@ -5791,14 +5386,14 @@ async function showCampaignDetail(campaignId) {
       indicator.style.color = "#22c55e";
     } else {
       indicator.innerHTML =
-        tyI("check", 12) + " <span>" + (stats.sent || 0) + " envoyés</span>";
+        tyI("check", 12) + " <span>" + (stats.sent || 0) + " sent</span>";
       indicator.style.color = "#64748b";
     }
   }
 
   // Populate logs from API
-  // Le serveur renvoie désormais `logs_total` (compteur monotone du fichier complet)
-  // en plus des 500 dernières lignes, afin de permettre un streaming incrémental.
+  // The server now returns `logs_total` (monotonic counter of the full file)
+  // in addition to the last 500 lines, to allow incremental streaming.
   const logsTotal = Number.isFinite(campaign.logs_total)
     ? campaign.logs_total
     : (campaign.logs || []).length;
@@ -5806,7 +5401,7 @@ async function showCampaignDetail(campaignId) {
     const logs = campaign.logs || [];
     if (logs.length === 0 && campaign.status !== "running") {
       logsContainer.innerHTML =
-        '<div class="log-line info" style="color:#64748b">Aucun log disponible pour cette campagne.</div>';
+        '<div class="log-line info" style="color:#64748b">No logs available for this campaign.</div>';
     } else {
       logsContainer.innerHTML = "";
       logs.forEach((line) => {
@@ -5815,13 +5410,9 @@ async function showCampaignDetail(campaignId) {
         const lower = line.toLowerCase();
         div.className =
           "log-line " +
-          (lower.includes("erreur") ||
-          lower.includes("error") ||
-          lower.includes("failed")
+          (lower.includes("error") || lower.includes("failed")
             ? "failed"
-            : lower.includes("envoyé") ||
-                lower.includes("sent") ||
-                lower.includes("ok")
+            : lower.includes("sent") || lower.includes("ok")
               ? "ok"
               : "info");
         div.textContent = line;
@@ -5831,7 +5422,7 @@ async function showCampaignDetail(campaignId) {
     }
   }
 
-  // Polling court : compatible php -S (une seule requête à la fois ; le SSE bloquait tout le serveur)
+  // Short polling: compatible with php -S (one request at a time; SSE blocked the whole server)
   if (campaign.status === "running" || campaign.status === "pending") {
     startCampaignPolling(campaignId, logsTotal);
   } else {
@@ -5856,14 +5447,13 @@ function backToCampaignList() {
 async function relaunchCampaign(campaignId) {
   if (
     !confirm(
-      "Relancer l’envoi avec les paramètres actuellement enregistrés sur cette campagne ? (Utilisez « Modifier la campagne » pour les changer.)",
+      'Relaunch sending with the settings currently saved on this campaign? (Use "Edit campaign" to change them.)',
     )
   )
     return;
 
   const res = await api("send", "POST", { campaign_id: campaignId });
-  if (!res.success)
-    return alert("Erreur lors du relancement : " + (res.error || ""));
+  if (!res.success) return alert("Relaunch error: " + (res.error || ""));
 
   const campRes = await api("campaign&id=" + encodeURIComponent(campaignId));
   startCampaignCompletionWatch(campaignId, campRes.data?.name || "");
@@ -5871,9 +5461,9 @@ async function relaunchCampaign(campaignId) {
 }
 
 async function deleteCampaignCard(campaignId) {
-  if (!confirm("Supprimer définitivement cette campagne ?")) return;
+  if (!confirm("Permanently delete this campaign?")) return;
   const res = await api("campaign&id=" + campaignId, "DELETE");
-  if (!res.success) return alert("Erreur lors de la suppression.");
+  if (!res.success) return alert("Error while deleting.");
   await loadCampaigns();
 }
 
@@ -5884,7 +5474,7 @@ async function handlePause() {
   if (!state.paused) {
     await api("pause", "POST", { campaign_id: state.currentCampaignId });
     state.paused = true;
-    if (pauseBtn) pauseBtn.innerHTML = tyI("play", 16) + " Reprendre";
+    if (pauseBtn) pauseBtn.innerHTML = tyI("play", 16) + " Resume";
   } else {
     await api("resume", "POST", { campaign_id: state.currentCampaignId });
     state.paused = false;
@@ -5894,9 +5484,9 @@ async function handlePause() {
 
 async function handleStop() {
   if (!state.currentCampaignId) return;
-  if (!confirm("Arrêter définitivement la campagne ?")) return;
+  if (!confirm("Permanently stop the campaign?")) return;
   await api("stop", "POST", { campaign_id: state.currentCampaignId });
-  // Repart sur le curseur actuellement connu pour ne pas re-streamer d'anciens logs.
+  // Restart from the currently known cursor to avoid re-streaming old logs.
   const cursor =
     typeof state.campaignLogCursor === "number"
       ? state.campaignLogCursor
@@ -5905,7 +5495,7 @@ async function handleStop() {
 }
 
 // ============================================
-// Suivi campagne (polling — compatible php -S)
+// Campaign monitoring (polling — php -S compatible)
 // ============================================
 
 function stopCampaignMonitor() {
@@ -5917,14 +5507,8 @@ function stopCampaignMonitor() {
 
 function logLineClassFromContent(line) {
   const lower = String(line).toLowerCase();
-  if (
-    lower.includes("erreur") ||
-    lower.includes("error") ||
-    lower.includes("failed") ||
-    lower.includes("échec")
-  )
-    return "failed";
-  if (lower.includes("envoyé") || lower.includes("sent")) return "ok";
+  if (lower.includes("error") || lower.includes("failed")) return "failed";
+  if (lower.includes("sent")) return "ok";
   return "info";
 }
 
@@ -5937,12 +5521,12 @@ function updateDetailStatsFromServer(stats, status) {
   const failed = stats.failed || 0;
   const total = stats.total || 0;
   const remaining = Math.max(0, total - sent - failed);
-  setText("detailSent", sent.toLocaleString("fr-FR"));
-  setText("detailFailed", failed.toLocaleString("fr-FR"));
-  setText("detailTotal", total.toLocaleString("fr-FR"));
+  setText("detailSent", sent.toLocaleString("en-US"));
+  setText("detailFailed", failed.toLocaleString("en-US"));
+  setText("detailTotal", total.toLocaleString("en-US"));
   setText(
     "detailRemaining",
-    status === "running" ? remaining.toLocaleString("fr-FR") : "—",
+    status === "running" ? remaining.toLocaleString("en-US") : "—",
   );
   const pct = total > 0 ? Math.round((sent / total) * 100) : 0;
   setText("detailPercent", pct + "%");
@@ -5967,13 +5551,13 @@ function updateDetailStatsFromServer(stats, status) {
 }
 
 /**
- * Polling incrémental des logs d'une campagne.
+ * Incremental polling of a campaign's logs.
  *
  * @param {string} campaignId
- * @param {number} initialCursor  position du curseur (logs_total déjà affichés).
- *                                Le backend renvoie ensuite uniquement les lignes
- *                                postérieures à ce curseur, ce qui évite le blocage
- *                                historique qui survenait au-delà de 500 lignes.
+ * @param {number} initialCursor  cursor position (logs_total already displayed).
+ *                                The backend then returns only the lines
+ *                                after this cursor, which avoids the historical
+ *                                blocking that occurred beyond 500 lines.
  */
 function startCampaignPolling(campaignId, initialCursor = 0) {
   stopCampaignMonitor();
@@ -6005,10 +5589,10 @@ function startCampaignPolling(campaignId, initialCursor = 0) {
     const container = document.getElementById("detailLogsContainer");
 
     if (container && newLines.length > 0) {
-      // Retirer un éventuel placeholder "Aucun log disponible" au premier ajout.
+      // Remove any "No logs available" placeholder on first add.
       container.querySelectorAll(".log-line").forEach((el) => {
         const txt = (el.textContent || "").trim();
-        if (txt.startsWith("Aucun log disponible") || txt === "Chargement...") {
+        if (txt.startsWith("No logs available") || txt === "Loading...") {
           el.remove();
         }
       });
@@ -6023,7 +5607,7 @@ function startCampaignPolling(campaignId, initialCursor = 0) {
       container.scrollTop = container.scrollHeight;
     }
 
-    // Le curseur suit toujours le total serveur, même sans nouvelle ligne.
+    // The cursor always follows the server total, even without a new line.
     cursor = serverTotal;
     state.campaignLogCursor = cursor;
 
@@ -6033,18 +5617,19 @@ function startCampaignPolling(campaignId, initialCursor = 0) {
     );
     if (indicator) {
       if (terminal) {
-        indicator.innerHTML = tyI("check-circle", 12) + " <span>terminé</span>";
+        indicator.innerHTML =
+          tyI("check-circle", 12) + " <span>completed</span>";
         indicator.style.color = "#64748b";
       } else if (camp.status === "running") {
         indicator.innerHTML =
-          tyI("activity", 12) + " <span>live (rafraîchissement auto)</span>";
+          tyI("activity", 12) + " <span>live (auto refresh)</span>";
         indicator.style.color = "#22c55e";
       } else if (camp.status === "paused") {
         indicator.innerHTML = tyI("pause", 12) + " <span>en pause</span>";
         indicator.style.color = "#f59e0b";
       } else {
         indicator.innerHTML =
-          tyI("clock", 12) + " <span>en attente du worker…</span>";
+          tyI("clock", 12) + " <span>waiting for worker…</span>";
         indicator.style.color = "#f59e0b";
       }
     }
@@ -6071,11 +5656,11 @@ async function initScore() {
     if (res.success) {
       const campaigns = res.data || [];
       select.innerHTML =
-        '<option value="">-- Choisir une campagne --</option>' +
+        '<option value="">-- Choose a campaign --</option>' +
         campaigns
           .map(
             (c) =>
-              `<option value="${c.id}">${escHtml(c.name || "Campagne " + c.id)}</option>`,
+              `<option value="${c.id}">${escHtml(c.name || "Campaign " + c.id)}</option>`,
           )
           .join("");
       if (scoreEmpty) {
@@ -6083,7 +5668,7 @@ async function initScore() {
           scoreEmpty.classList.remove("hidden");
           scoreEmpty.innerHTML = `
             <div class="empty-state-card empty-state-card--compact">
-              <p class="empty-state-text">Créez d’abord une campagne (même brouillon) pour lancer une analyse de score depuis ses templates.</p>
+              <p class="empty-state-text">First create a campaign (even a draft) to run a score analysis from its templates.</p>
               <button type="button" class="btn-secondary btn-sm" id="scoreEmptyGoCampaigns">Aller aux campagnes</button>
             </div>`;
           document
@@ -6102,14 +5687,14 @@ async function initScore() {
   if (runBtn) {
     runBtn.addEventListener("click", async () => {
       const campaignId = select ? select.value : "";
-      if (!campaignId) return alert("Sélectionnez une campagne.");
+      if (!campaignId) return alert("Select a campaign.");
 
       const campaignRes = await api("campaigns");
-      if (!campaignRes.success) return alert("Erreur chargement campagnes.");
+      if (!campaignRes.success) return alert("Campaign loading error.");
       const campaign = (campaignRes.data || []).find(
         (c) => String(c.id) === String(campaignId),
       );
-      if (!campaign) return alert("Campagne introuvable.");
+      if (!campaign) return alert("Campaign not found.");
 
       const config = campaign.config || {};
       const templateIds = config.template_ids || [];
@@ -6126,7 +5711,7 @@ async function initScore() {
       });
 
       if (!scoreRes.success)
-        return alert("Erreur score: " + (scoreRes.error || ""));
+        return alert("Score error: " + (scoreRes.error || ""));
 
       const container = document.getElementById("scoreResult");
       if (container) {
@@ -6169,7 +5754,7 @@ async function refreshTestingMailFromIdentities() {
     }
     if (hintNo) {
       hintNo.textContent =
-        "Choisissez une configuration SMTP ci-dessus pour charger l’expéditeur.";
+        "Choose an SMTP configuration above to load the sender.";
       hintNo.classList.remove("hidden");
     }
     testingMailFromIdentityMeta = new Map();
@@ -6198,8 +5783,8 @@ async function refreshTestingMailFromIdentities() {
     }
     if (hintEl) {
       hintEl.textContent = shouldAutofillFrom
-        ? "Adresse From préremplie depuis le username SMTP (modifiable)."
-        : "Fournisseur générique : saisie manuelle de l’adresse From.";
+        ? "From address pre-filled from the SMTP username (editable)."
+        : "Generic provider: manual entry of the From address.";
       hintEl.classList.remove("hidden");
     }
     if (fs) fs.innerHTML = '<option value="">—</option>';
@@ -6209,17 +5794,16 @@ async function refreshTestingMailFromIdentities() {
   if (wrapSel) wrapSel.classList.remove("hidden");
   if (wrapInp) wrapInp.classList.add("hidden");
   if (hintEl) {
-    hintEl.textContent = "Chargement des identités…";
+    hintEl.textContent = "Loading identities…";
     hintEl.classList.remove("hidden");
   }
   const res = await api("verified_senders", "POST", { smtp_config_id: id });
   if (!fs) return;
   if (!res.success) {
     testingMailFromIdentityMeta = new Map();
-    fs.innerHTML = '<option value="">— Erreur —</option>';
+    fs.innerHTML = '<option value="">— Error —</option>';
     if (hintEl) {
-      hintEl.textContent =
-        "Impossible de charger les identités : " + (res.error || "");
+      hintEl.textContent = "Unable to load identities: " + (res.error || "");
       hintEl.classList.remove("hidden");
     }
     return;
@@ -6228,9 +5812,7 @@ async function refreshTestingMailFromIdentities() {
   testingMailFromIdentityMeta = new Map();
   fs.innerHTML =
     '<option value="">' +
-    (senders.length
-      ? "— Choisir une identité —"
-      : "— Aucune identité listée —") +
+    (senders.length ? "— Choose an identity —" : "— No identity listed —") +
     "</option>" +
     senders
       .map((s) => {
@@ -6254,10 +5836,10 @@ async function refreshTestingMailFromIdentities() {
   if (hintEl) {
     if (senders.length === 0) {
       hintEl.textContent =
-        "Aucune identité vérifiée pour ce compte. Créez une identité expéditeur dans Brevo, SendGrid (Sender Authentication) ou SES.";
+        "No verified identity for this account. Create a sender identity in Brevo, SendGrid (Sender Authentication) or SES.";
     } else {
       hintEl.textContent =
-        "Identités autorisées par l’API : sélection obligatoire (pas de saisie manuelle pour ce fournisseur).";
+        "Identities authorized by the API: selection required (no manual entry for this provider).";
     }
     hintEl.classList.remove("hidden");
   }
@@ -6275,7 +5857,7 @@ function populateTestingSelects() {
   ];
   const list = state.smtpConfigs || [];
   const html =
-    '<option value="">— Choisir —</option>' +
+    '<option value="">— Choose —</option>' +
     list
       .map((c) => {
         const id = escAttr(c.id);
@@ -6290,14 +5872,14 @@ function populateTestingSelects() {
     if (cur && [...el.options].some((o) => o.value === cur)) el.value = cur;
   });
 
-  // Select dédié SendGrid Activity : uniquement les configs SendGrid.
+  // Dedicated SendGrid Activity select: SendGrid configs only.
   const sgSel = document.getElementById("sgActivitySmtpSelect");
   if (sgSel) {
     const sgList = list.filter(
       (c) => String(c.provider || "").toLowerCase() === "sendgrid",
     );
     const sgHtml =
-      '<option value="">— Choisir —</option>' +
+      '<option value="">— Choose —</option>' +
       sgList
         .map(
           (c) =>
@@ -6324,7 +5906,7 @@ async function refreshTestingPage() {
     const cur = sel.value;
     const tpls = tplRes.data || [];
     sel.innerHTML =
-      '<option value="">— Choisir —</option>' +
+      '<option value="">— Choose —</option>' +
       tpls
         .map(
           (t) =>
@@ -6340,7 +5922,7 @@ async function refreshTestingPage() {
 
 async function fetchProviderInspectAndCacheSmtp(smtpId) {
   const res = await api("provider_inspect", "POST", { smtp_config_id: smtpId });
-  if (!res.success) throw new Error(res.error || "Échec introspection");
+  if (!res.success) throw new Error(res.error || "Introspection failed");
   setSmtpInspectCacheEntry(smtpId, res.data);
   if (res.data && res.data.remote_snapshot) {
     mergeSmtpRemoteSnapshotIntoState(smtpId, res.data.remote_snapshot);
@@ -6396,7 +5978,7 @@ function initTesting() {
         const id = document
           .getElementById("testingInspectSmtpSelect")
           ?.value?.trim();
-        if (!id) return alert("Choisissez une configuration SMTP.");
+        if (!id) return alert("Choose an SMTP configuration.");
         const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === id);
         if (
           !cfg ||
@@ -6404,9 +5986,7 @@ function initTesting() {
             String(cfg.provider || "").toLowerCase(),
           )
         ) {
-          return alert(
-            "Choisissez une configuration Brevo, Amazon SES ou SendGrid.",
-          );
+          return alert("Choose a Brevo, Amazon SES or SendGrid configuration.");
         }
         body = { smtp_config_id: id };
       } else {
@@ -6417,7 +5997,7 @@ function initTesting() {
           const k = document
             .getElementById("testingManualBrevoKey")
             ?.value?.trim();
-          if (!k) return alert("Clé API Brevo requise.");
+          if (!k) return alert("Brevo API key required.");
           body = { provider: "brevo", api_key: k };
         } else if (p === "ses") {
           const ak = document
@@ -6429,7 +6009,9 @@ function initTesting() {
           const reg =
             document.getElementById("testingSesRegion")?.value || "eu-west-3";
           if (!ak || !sk)
-            return alert("Access Key ID et Secret Access Key requis pour SES.");
+            return alert(
+              "Access Key ID and Secret Access Key required for SES.",
+            );
           body = {
             provider: "ses",
             access_key: ak,
@@ -6440,7 +6022,7 @@ function initTesting() {
           const k = document
             .getElementById("testingManualSendgridKey")
             ?.value?.trim();
-          if (!k) return alert("Clé API SendGrid requise.");
+          if (!k) return alert("SendGrid API key required.");
           const sgr =
             document
               .getElementById("testingManualSendgridRegion")
@@ -6451,13 +6033,13 @@ function initTesting() {
       }
 
       if (status) {
-        status.textContent = "Interrogation des API en cours…";
+        status.textContent = "Querying APIs…";
         status.classList.remove("hidden");
       }
       const res = await api("provider_inspect", "POST", body);
       if (status) status.classList.add("hidden");
       if (!res.success) {
-        alert(res.error || "Erreur");
+        alert(res.error || "Error");
         return;
       }
       if (body.smtp_config_id) {
@@ -6486,7 +6068,7 @@ function initTesting() {
         .getElementById("testingConnSmtpSelect")
         ?.value?.trim();
       const rEl = document.getElementById("testingConnResult");
-      if (!id) return alert("Choisissez une configuration.");
+      if (!id) return alert("Choose a configuration.");
       const res = await api("test_smtp", "POST", {
         smtp_config_id: id,
         from_email: "test@example.com",
@@ -6494,8 +6076,8 @@ function initTesting() {
       if (rEl) {
         rEl.classList.remove("hidden");
         rEl.textContent = res.success
-          ? "Connexion réussie."
-          : "Échec : " + (res.error || "");
+          ? "Connection successful."
+          : "Failed: " + (res.error || "");
         rEl.style.color = res.success ? "#22c55e" : "#ef4444";
       }
     });
@@ -6549,7 +6131,7 @@ function initTesting() {
         : document.getElementById("testingMailFrom")?.value?.trim() || "";
       if (!smtpId || !to || !from)
         return alert(
-          "Configuration SMTP, destinataire et expéditeur (From) sont requis.",
+          "SMTP configuration, recipient and sender (From) are required.",
         );
       const mode = document.getElementById("testingMailContentMode")?.value;
       const payload = {
@@ -6563,7 +6145,7 @@ function initTesting() {
         const tid = document
           .getElementById("testingMailTemplateSelect")
           ?.value?.trim();
-        if (!tid) return alert("Choisissez un template.");
+        if (!tid) return alert("Choose a template.");
         payload.template_id = tid;
       } else {
         payload.subject =
@@ -6582,14 +6164,19 @@ function initTesting() {
         if (res.success) {
           updateTestingMailLog(pendingLine, to, "ok");
         } else {
-          updateTestingMailLog(pendingLine, to, "failed", res.error || "Échec");
+          updateTestingMailLog(
+            pendingLine,
+            to,
+            "failed",
+            res.error || "Failed",
+          );
         }
       } catch (e) {
         updateTestingMailLog(
           pendingLine,
           to,
           "failed",
-          (e && e.message) || "Erreur réseau",
+          (e && e.message) || "Network error",
         );
       }
     });
@@ -6633,18 +6220,18 @@ function updateTestingMailLog(line, to, state, errorMessage) {
   msg.innerHTML = "";
   const target = document.createElement("span");
   target.className = "log-target";
-  target.textContent = to || "(destinataire inconnu)";
+  target.textContent = to || "(unknown recipient)";
 
   if (state === "ok") {
     line.classList.add("ok");
-    msg.append("Email envoyé à ", target);
+    msg.append("Email sent to ", target);
   } else if (state === "failed") {
     line.classList.add("failed");
-    msg.append("Échec pour ", target);
+    msg.append("Failed for ", target);
     if (errorMessage) msg.append(" — " + errorMessage);
   } else {
     line.classList.add("info");
-    msg.append("Envoi en cours vers ", target, "…");
+    msg.append("Sending to ", target, "…");
   }
 }
 
@@ -6691,12 +6278,11 @@ function initSendgridActivityCard() {
         const id = document
           .getElementById("sgActivitySmtpSelect")
           ?.value?.trim();
-        if (!id)
-          return alert("Choisissez une configuration SendGrid enregistrée.");
+        if (!id) return alert("Choose a saved SendGrid configuration.");
         body.smtp_config_id = id;
       } else {
         const k = document.getElementById("sgActivityManualKey")?.value?.trim();
-        if (!k) return alert("Clé API SendGrid requise.");
+        if (!k) return alert("SendGrid API key required.");
         body.api_key = k;
         const sgr = document
           .getElementById("sgActivityManualRegion")
@@ -6704,10 +6290,10 @@ function initSendgridActivityCard() {
         if (sgr) body.sendgrid_region = sgr;
       }
 
-      setHint("Interrogation de /v3/messages…");
+      setHint("Querying /v3/messages…");
       const res = await api("sendgrid_activity", "POST", body);
       if (!res.success) {
-        setHint("Erreur : " + (res.error || ""), "#ef4444");
+        setHint("Error: " + (res.error || ""), "#ef4444");
         if (out) {
           out.classList.add("hidden");
           out.innerHTML = "";
@@ -6718,7 +6304,7 @@ function initSendgridActivityCard() {
       const messages = Array.isArray(data.messages) ? data.messages : [];
       setHint(
         messages.length +
-          " message(s) retourné(s) — source : " +
+          " message(s) returned — source: " +
           (data.base_used || "SendGrid") +
           " — " +
           (data.fetched_at || ""),
@@ -6733,7 +6319,7 @@ function initSendgridActivityCard() {
 
 function renderSendgridActivityTable(messages) {
   if (!Array.isArray(messages) || messages.length === 0) {
-    return '<p class="field-hint">Aucun message correspondant. Essayez d’élargir les filtres ou de charger un nombre plus élevé.</p>';
+    return '<p class="field-hint">No matching message. Try widening the filters or loading a higher number.</p>';
   }
   const rows = messages
     .map((m) => {
@@ -6758,7 +6344,7 @@ function renderSendgridActivityTable(messages) {
       const when = m.last_event_time ? new Date(m.last_event_time) : null;
       const whenLabel =
         when && !isNaN(when.getTime())
-          ? when.toLocaleString("fr-FR", {
+          ? when.toLocaleString("en-US", {
               dateStyle: "short",
               timeStyle: "medium",
             })
@@ -6784,13 +6370,13 @@ function renderSendgridActivityTable(messages) {
       <table class="sg-activity-table">
         <thead>
           <tr>
-            <th>Dernier événement</th>
-            <th>Statut</th>
-            <th>À</th>
-            <th>De</th>
-            <th>Sujet</th>
-            <th title="Ouvertures">Opens</th>
-            <th title="Clics">Clicks</th>
+            <th>Last event</th>
+            <th>Status</th>
+            <th>To</th>
+            <th>From</th>
+            <th>Subject</th>
+            <th title="Opens">Opens</th>
+            <th title="Clicks">Clicks</th>
             <th>Message ID</th>
           </tr>
         </thead>
@@ -6860,8 +6446,8 @@ async function initConfig() {
         return;
       }
 
-      // Le toggle ne s’active que si on clique sur la ligne d’en-tête elle-même,
-      // jamais sur le contenu déplié (sélection de texte / clic sur JSON, etc.).
+      // The toggle only activates if you click the header row itself,
+      // never on the expanded content (text selection / click on JSON, etc.).
       if (e.target.closest(".smtp-config-detail")) return;
       if (e.target.closest(".smtp-config-row-actions")) return;
       if (!e.target.closest(".smtp-config-row--head")) return;
@@ -6928,8 +6514,8 @@ async function initConfig() {
       if (resultEl) {
         const err = res.error || "";
         resultEl.innerHTML = res.success
-          ? tyI("check", 16) + " <span>Connexion réussie</span>"
-          : tyI("x-circle", 16) + " <span>Échec : " + escHtml(err) + "</span>";
+          ? tyI("check", 16) + " <span>Connection successful</span>"
+          : tyI("x-circle", 16) + " <span>Failed: " + escHtml(err) + "</span>";
         resultEl.style.color = res.success ? "#22c55e" : "#ef4444";
         resultEl.classList.remove("hidden");
       }
@@ -6954,7 +6540,7 @@ async function initConfig() {
     saveUnsubBtn.addEventListener("click", () => {
       const val = unsubEl ? unsubEl.value.trim() : "";
       localStorage.setItem("tydra_unsub_url", val);
-      alert("URL de désabonnement sauvegardée.");
+      alert("Unsubscribe URL saved.");
     });
   }
 
@@ -6989,8 +6575,8 @@ function renderSmtpList(configs) {
       emptyEl.innerHTML = `
         <div class="empty-state-card empty-state-card--compact">
           <div class="empty-state-icon" aria-hidden="true">${tyI("server", 36)}</div>
-          <h2 class="empty-state-title">Aucune configuration SMTP / API</h2>
-          <p class="empty-state-text">Ajoutez Brevo, SMTP, Office365, SES ou SendGrid depuis le bouton <strong>Add configuration</strong> en haut à droite.</p>
+          <h2 class="empty-state-title">No SMTP / API configuration</h2>
+          <p class="empty-state-text">Add Brevo, SMTP, Office365, SES or SendGrid from the <strong>Add configuration</strong> button at the top right.</p>
         </div>`;
       if (typeof tyHydrateIcons === "function") tyHydrateIcons(emptyEl);
     }
@@ -7011,7 +6597,7 @@ function renderSmtpList(configs) {
       const inspectBlock =
         entry && entry.inspect
           ? buildInspectPreHtml(entry.fetched_at, entry.inspect)
-          : `<p class="field-hint">${canInspect ? "Aucune donnée en cache pour cette session — cliquez sur « Interroger l’API »." : "Introspection API disponible pour Brevo, Amazon SES et SendGrid uniquement."}</p>`;
+          : `<p class="field-hint">${canInspect ? 'No cached data for this session — click "Query API".' : "API introspection available for Brevo, Amazon SES and SendGrid only."}</p>`;
       const fetchBtn = canInspect
         ? `<button type="button" class="btn-secondary btn-sm btn-with-icon js-smtp-fetch-inspect">${tyI("refresh-cw", 16)} Interroger l’API</button>`
         : "";
@@ -7025,15 +6611,15 @@ function renderSmtpList(configs) {
         </div>
         <div class="smtp-row-extras-slot">${buildSmtpRemoteRowExtrasHtml(c)}</div>
         <div class="smtp-config-row-actions">
-          <button type="button" class="btn btn-sm js-smtp-edit">Modifier</button>
+          <button type="button" class="btn btn-sm js-smtp-edit">Edit</button>
           <button type="button" class="btn btn-sm js-smtp-test">Tester</button>
-          <button type="button" class="btn btn-sm btn-danger js-smtp-delete">Supprimer</button>
+          <button type="button" class="btn btn-sm btn-danger js-smtp-delete">Delete</button>
         </div>
       </div>
       <div class="smtp-config-detail hidden">
         ${renderSmtpDetailMetaHtml(c)}
         <div class="smtp-config-inspect">
-          <h4>Données API (cette session)</h4>
+          <h4>API data (this session)</h4>
           ${fetchBtn}
           <div class="smtp-config-inspect-output">${inspectBlock}</div>
         </div>
@@ -7047,7 +6633,7 @@ function renderSmtpList(configs) {
 async function editSmtpConfig(id) {
   const res = await api("smtp_config&id=" + encodeURIComponent(id));
   if (!res.success || !res.data) {
-    alert("Configuration introuvable.");
+    alert("Configuration not found.");
     return;
   }
   const c = res.data;
@@ -7117,7 +6703,7 @@ async function testSavedSmtpConfig(id) {
   const msg = document.getElementById("smtpListTestMessage");
   if (msg) {
     msg.classList.remove("hidden");
-    msg.textContent = "Test de connexion en cours…";
+    msg.textContent = "Testing connection…";
     msg.style.color = "var(--text-muted)";
   }
   const res = await api("test_smtp", "POST", {
@@ -7128,12 +6714,12 @@ async function testSavedSmtpConfig(id) {
     const name = state.smtpConfigs.find((s) => s.id === id)?.name || id;
     msg.innerHTML = res.success
       ? tyI("check", 16) +
-        " <span>Connexion réussie pour « " +
+        ' <span>Connection successful for "' +
         escHtml(name) +
-        " »</span>"
+        '"</span>'
       : tyI("x-circle", 16) +
         " <span>" +
-        escHtml(res.error || "Échec du test") +
+        escHtml(res.error || "Test failed") +
         "</span>";
     msg.style.color = res.success ? "#22c55e" : "#ef4444";
   }
@@ -7205,7 +6791,7 @@ function formatSesQuotaNum(n) {
   if (n == null || n === "") return "—";
   const x = Number(n);
   if (Number.isNaN(x)) return "—";
-  return x.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  return x.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function truncateSesErr(s, max) {
@@ -7253,10 +6839,10 @@ function resolveSesInspectPayload(context) {
 }
 
 function alertSesInspectError(code) {
-  if (code === "ses_only") alert("Choisissez Amazon SES comme fournisseur.");
+  if (code === "ses_only") alert("Choose Amazon SES as the provider.");
   else if (code === "need_keys") {
     alert(
-      "Renseignez l’Access Key ID et la Secret Access Key. AWS n’autorise aucun appel API avec seule la clé visible (AKIA…) : la signature exige la clé secrète.",
+      "Fill in the Access Key ID and the Secret Access Key. AWS does not allow any API call with only the visible key (AKIA…): the signature requires the secret key.",
     );
   }
 }
@@ -7287,22 +6873,22 @@ function renderSesProbeTable(container, data, context) {
     html +=
       '<p class="smtp-ses-probe-lead"><strong>' +
       escHtml(String(sum.reachable_count)) +
-      "</strong> région(s) répondent avec succès. ";
+      "</strong> region(s) responding successfully. ";
     if (sum.best_quota_region) {
       html +=
-        "Plus haut quota sur 24 h : <strong>" +
+        "Highest 24h quota: <strong>" +
         escHtml(sum.best_quota_label || sum.best_quota_region) +
         "</strong> (<code>" +
         escHtml(sum.best_quota_region) +
         "</code>) — " +
         formatSesQuotaNum(sum.best_max_24h) +
-        " max / 24 h.</p>";
+        " max / 24h.</p>";
     } else {
       html += "</p>";
     }
   } else {
     html +=
-      '<p class="smtp-ses-probe-lead smtp-ses-probe-lead--warn">Aucune région n’a répondu avec succès.</p>';
+      '<p class="smtp-ses-probe-lead smtp-ses-probe-lead--warn">No region responded successfully.</p>';
   }
   if (sum.hint)
     html +=
@@ -7312,14 +6898,14 @@ function renderSesProbeTable(container, data, context) {
   html +=
     '<div class="smtp-ses-probe-table-wrap"><table class="smtp-ses-probe-table"><thead><tr>';
   [
-    "Région",
+    "Region",
     "Code",
-    "Statut",
-    "Max / 24 h",
-    "Envoyés / 24 h",
-    "Débit / s",
+    "Status",
+    "Max / 24h",
+    "Sent / 24h",
+    "Rate / s",
     "Prod.",
-    "Envoi",
+    "Sending",
     "",
   ].forEach((h) => {
     html += "<th>" + escHtml(h) + "</th>";
@@ -7378,7 +6964,7 @@ function renderSesInspectResult(container, res, context) {
       '<p class="smtp-ses-inspect-err">' +
       tyI("x-circle", 16) +
       " " +
-      escHtml(res.error || "Erreur") +
+      escHtml(res.error || "Error") +
       "</p>";
     return;
   }
@@ -7389,12 +6975,12 @@ function renderSesInspectResult(container, res, context) {
   }
   let html = '<div class="smtp-ses-inspect-inner">';
   html +=
-    '<p class="smtp-ses-inspect-meta">Région : <code>' +
+    '<p class="smtp-ses-inspect-meta">Region: <code>' +
     escHtml(d.region || "") +
     "</code></p>";
   if (d.account) {
     html +=
-      '<h4 class="smtp-ses-inspect-h">Compte SES <span class="label-hint">(API GetAccount)</span></h4>';
+      '<h4 class="smtp-ses-inspect-h">SES account <span class="label-hint">(API GetAccount)</span></h4>';
     html +=
       '<pre class="smtp-ses-inspect-pre" tabindex="0">' +
       escHtml(JSON.stringify(d.account, null, 2)) +
@@ -7402,7 +6988,7 @@ function renderSesInspectResult(container, res, context) {
   }
   if (d.identities) {
     html +=
-      '<h4 class="smtp-ses-inspect-h">Identités <span class="label-hint">(première page)</span></h4>';
+      '<h4 class="smtp-ses-inspect-h">Identities <span class="label-hint">(first page)</span></h4>';
     html +=
       '<pre class="smtp-ses-inspect-pre" tabindex="0">' +
       escHtml(JSON.stringify(d.identities, null, 2)) +
@@ -7413,7 +6999,7 @@ function renderSesInspectResult(container, res, context) {
     typeof d.errors === "object" &&
     Object.keys(d.errors).length
   ) {
-    html += '<h4 class="smtp-ses-inspect-h">Erreurs partielles</h4>';
+    html += '<h4 class="smtp-ses-inspect-h">Partial errors</h4>';
     html +=
       '<pre class="smtp-ses-inspect-pre">' +
       escHtml(JSON.stringify(d.errors, null, 2)) +
@@ -7437,7 +7023,7 @@ async function runSesInspect(context) {
   }
 
   resultEl.innerHTML =
-    '<p class="smtp-ses-inspect-loading">Interrogation de l’API Amazon SES…</p>';
+    '<p class="smtp-ses-inspect-loading">Querying the Amazon SES API…</p>';
   resultEl.classList.remove("hidden");
   const res = await api("ses_inspect", "POST", resolved.payload);
   renderSesInspectResult(resultEl, res, context);
@@ -7463,7 +7049,7 @@ async function runSesProbeAllRegions(context) {
   if (regEl && regEl.value) payload.preferred_region = regEl.value.trim();
 
   resultEl.innerHTML =
-    '<p class="smtp-ses-inspect-loading">Analyse de toutes les régions SES en parallèle (≈ 5–15 s)…</p>';
+    '<p class="smtp-ses-inspect-loading">Analyzing all SES regions in parallel (≈ 5–15 s)…</p>';
   resultEl.classList.remove("hidden");
   const res = await api("ses_inspect", "POST", payload);
   renderSesInspectResult(resultEl, res, context);
@@ -7494,7 +7080,7 @@ function toggleSmtpFields(provider) {
   const smtpUserEl = document.getElementById("smtpUser");
   if (smtpUserEl) {
     if (provider === "office365")
-      smtpUserEl.placeholder = "adresse@domaine.com (compte Microsoft 365)";
+      smtpUserEl.placeholder = "address@domain.com (Microsoft 365 account)";
     else if (provider === "smtp") smtpUserEl.placeholder = "user@domain.com";
   }
 }
@@ -7543,32 +7129,31 @@ function collectSmtpFormData() {
 
 async function saveSmtpConfig() {
   const data = collectSmtpFormData();
-  if (!data.name) return alert("Le nom de la configuration est requis.");
+  if (!data.name) return alert("Configuration name is required.");
   if (data.provider === "office365") {
     if (!data.username) {
       return alert(
-        "Microsoft 365 : l’utilisateur SMTP doit être l’adresse e-mail complète du compte.",
+        "Microsoft 365: the SMTP user must be the account’s full email address.",
       );
     }
     if (!data.id && !data.password) {
       return alert(
-        "Microsoft 365 : le mot de passe (ou mot de passe d’application) est requis pour une nouvelle configuration.",
+        "Microsoft 365: the password (or app password) is required for a new configuration.",
       );
     }
   }
   if (data.provider === "ses") {
     if (!data.access_key)
-      return alert("Amazon SES : l’Access Key ID (AKIA…) est requis.");
+      return alert("Amazon SES: the Access Key ID (AKIA…) is required.");
     if (!data.id && !data.secret_key) {
       return alert(
-        "Amazon SES : la Secret Access Key est requise pour une nouvelle configuration.",
+        "Amazon SES: the Secret Access Key is required for a new configuration.",
       );
     }
   }
 
   const res = await api("smtp_configs", "POST", data);
-  if (!res.success)
-    return alert("Erreur sauvegarde SMTP: " + (res.error || ""));
+  if (!res.success) return alert("SMTP save error: " + (res.error || ""));
 
   const form = document.getElementById("smtpForm");
   if (form) form.classList.add("hidden");
@@ -7576,9 +7161,9 @@ async function saveSmtpConfig() {
 }
 
 async function deleteSmtpConfig(id) {
-  if (!confirm("Supprimer cette configuration SMTP ?")) return;
+  if (!confirm("Delete this SMTP configuration?")) return;
   const res = await api("smtp_config&id=" + id, "DELETE");
-  if (!res.success) return alert("Erreur suppression SMTP.");
+  if (!res.success) return alert("SMTP deletion error.");
   removeSmtpInspectCacheEntry(id);
   await loadSmtpConfigs();
 }
@@ -7596,17 +7181,17 @@ function renderDnsGuide() {
     <div class="dns-block">
       <div class="dns-block-title">SPF <span style="color:#64748b;font-weight:normal;font-size:12px">@ TXT</span></div>
       <div class="dns-record-value" id="spfValue">v=spf1 include:spf.brevo.com ~all</div>
-      <button class="btn btn-sm" onclick="copyText('spfValue')">Copier</button>
+      <button class="btn btn-sm" onclick="copyText('spfValue')">Copy</button>
     </div>
     <div class="dns-block">
       <div class="dns-block-title">DKIM <span style="color:#64748b;font-weight:normal;font-size:12px">brevo._domainkey TXT</span></div>
-      <textarea id="dkimValue" class="dns-record-value" rows="3" placeholder="Collez ici votre valeur DKIM depuis Brevo..." style="width:100%;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;color:inherit;font-family:monospace;font-size:12px"></textarea>
-      <button class="btn btn-sm" onclick="copyText('dkimValue')">Copier</button>
+      <textarea id="dkimValue" class="dns-record-value" rows="3" placeholder="Paste your DKIM value from Brevo here..." style="width:100%;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;color:inherit;font-family:monospace;font-size:12px"></textarea>
+      <button class="btn btn-sm" onclick="copyText('dkimValue')">Copy</button>
     </div>
     <div class="dns-block">
       <div class="dns-block-title">DMARC <span style="color:#64748b;font-weight:normal;font-size:12px">_dmarc TXT</span></div>
       <div class="dns-record-value" id="dmarcValue">v=DMARC1; p=none; rua=mailto:dmarc@${escHtml(domain)}</div>
-      <button class="btn btn-sm" onclick="copyText('dmarcValue')">Copier</button>
+      <button class="btn btn-sm" onclick="copyText('dmarcValue')">Copy</button>
     </div>
   `;
   container.classList.remove("hidden");
@@ -7619,7 +7204,7 @@ function copyText(elementId) {
   navigator.clipboard
     .writeText(text.trim())
     .then(() => {
-      alert("Copié !");
+      alert("Copied!");
     })
     .catch(() => {
       // fallback
@@ -7629,7 +7214,7 @@ function copyText(elementId) {
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
-      alert("Copié !");
+      alert("Copied!");
     });
 }
 
@@ -7639,7 +7224,7 @@ async function verifyDns() {
   const domain = domainEl ? domainEl.value.trim() : "";
   const selector = selectorEl ? selectorEl.value.trim() : "brevo";
 
-  if (!domain) return alert("Entrez un domaine à vérifier.");
+  if (!domain) return alert("Enter a domain to check.");
 
   const res = await api("dns_check", "POST", { domain, selector });
   const resultsEl = document.getElementById("dnsResults");
@@ -7647,7 +7232,7 @@ async function verifyDns() {
 
   if (!res.success) {
     resultsEl.innerHTML =
-      '<span style="color:#ef4444">Erreur: ' +
+      '<span style="color:#ef4444">Error: ' +
       escHtml(res.error || "") +
       "</span>";
     resultsEl.classList.remove("hidden");
@@ -7704,7 +7289,7 @@ function renderScore(result, container) {
       </div>
       <div>
         <div class="score-grade ${result.grade ? result.grade.color : ""}">${escHtml(gradeLabel)}</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">${issues.length} problème(s) détecté(s)</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">${issues.length} issue(s) detected</div>
       </div>
     </div>
     <div class="score-issues">
@@ -7919,7 +7504,7 @@ function initCustomSelects() {
 }
 
 // ============================================
-// RESTAURATION UI (après F5 / Ctrl+R)
+// UI RESTORATION (after F5 / Ctrl+R)
 // ============================================
 
 async function restoreUiStateAfterLoad() {
@@ -7995,7 +7580,7 @@ function appendLiveLogLine(message, level) {
   if (!container) return;
   container.querySelectorAll(".log-line").forEach((el) => {
     const txt = (el.textContent || "").trim();
-    if (txt.startsWith("Aucun log disponible") || txt === "Chargement...") {
+    if (txt.startsWith("No logs available") || txt === "Loading...") {
       el.remove();
     }
   });
@@ -8052,7 +7637,7 @@ function wireTauriCampaignEvents() {
     );
     const indicator = document.getElementById("detailLogsIndicator");
     if (indicator) {
-      indicator.innerHTML = tyI("check-circle", 12) + " <span>terminé</span>";
+      indicator.innerHTML = tyI("check-circle", 12) + " <span>completed</span>";
       indicator.style.color = "#64748b";
     }
     loadCampaigns();
@@ -8063,7 +7648,7 @@ function wireTauriCampaignEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  installUiTranslationObserver();
+  if (document.documentElement) document.documentElement.lang = "en";
   if (typeof tyHydrateIcons === "function") tyHydrateIcons();
   initCustomSelects();
   applySidebarPanelFromStorage();

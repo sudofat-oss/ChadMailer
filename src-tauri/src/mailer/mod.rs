@@ -55,7 +55,7 @@ pub async fn send_email_with_client(
         "mandrill" => crate::providers::mandrill::send_email(cfg, m, client).await,
         "postmark" => crate::providers::postmark::send_email(cfg, m, client).await,
         other => Err(AppError::Validation(format!(
-            "Provider non supporté pour l'envoi: {other}"
+            "Unsupported provider for sending: {other}"
         ))),
     }
 }

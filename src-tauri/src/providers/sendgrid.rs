@@ -20,7 +20,7 @@ pub async fn send_email(
 ) -> AppResult<SendResult> {
     let api_key = cfg.api_key.trim();
     if api_key.is_empty() {
-        return Err(AppError::Validation("Clé API SendGrid requise".into()));
+        return Err(AppError::Validation("SendGrid API key required".into()));
     }
     let region = if cfg.sendgrid_region.is_empty() {
         None
@@ -79,7 +79,7 @@ pub async fn send_email(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| AppError::Security(format!("SendGrid réseau: {e}")))?;
+        .map_err(|e| AppError::Security(format!("SendGrid network: {e}")))?;
 
     let status = response.status();
     let message_id = response
@@ -105,7 +105,7 @@ pub async fn send_email(
 
 pub async fn ping(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<Value> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API SendGrid requise".into()));
+        return Err(AppError::Validation("SendGrid API key required".into()));
     }
     let base = base_url(sendgrid_region);
     let profile = json_response(
@@ -121,7 +121,7 @@ pub async fn ping(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<Val
 
 pub async fn inspect(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<Value> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API SendGrid requise".into()));
+        return Err(AppError::Validation("SendGrid API key required".into()));
     }
 
     let base = base_url(sendgrid_region);
@@ -226,7 +226,7 @@ pub async fn activity(
     to_email: Option<&str>,
 ) -> AppResult<Value> {
     if api_key.trim().is_empty() {
-        return Err(AppError::Validation("Clé API SendGrid requise".into()));
+        return Err(AppError::Validation("SendGrid API key required".into()));
     }
 
     let base = base_url(sendgrid_region);

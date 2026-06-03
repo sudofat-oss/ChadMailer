@@ -43,7 +43,7 @@ impl ProxySpec {
     pub fn parse(input: &str) -> AppResult<Self> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
-            return Err(AppError::Validation("Proxy vide".into()));
+            return Err(AppError::Validation("Empty proxy entry".into()));
         }
         let normalized = if trimmed.contains("://") {
             trimmed.to_string()
@@ -51,23 +51,23 @@ impl ProxySpec {
             normalize_short_form(trimmed)?
         };
         let url = url::Url::parse(&normalized)
-            .map_err(|e| AppError::Validation(format!("URL proxy invalide '{trimmed}': {e}")))?;
+            .map_err(|e| AppError::Validation(format!("invalid proxy URL '{trimmed}': {e}")))?;
         let scheme = url.scheme().to_ascii_lowercase();
         match scheme.as_str() {
             "http" | "https" | "socks5" | "socks5h" => {}
             other => {
                 return Err(AppError::Validation(format!(
-                    "Schéma proxy non supporté '{other}'. Utilisez http, https, socks5 ou socks5h"
+                    "unsupported proxy scheme '{other}': use http, https, socks5 or socks5h"
                 )))
             }
         }
         let host = url
             .host_str()
-            .ok_or_else(|| AppError::Validation(format!("Proxy sans hôte: {trimmed}")))?
+            .ok_or_else(|| AppError::Validation(format!("proxy without host: {trimmed}")))?
             .to_string();
         let port = url
             .port_or_known_default()
-            .ok_or_else(|| AppError::Validation(format!("Proxy sans port: {trimmed}")))?;
+            .ok_or_else(|| AppError::Validation(format!("proxy without port: {trimmed}")))?;
         let has_auth = !url.username().is_empty() || url.password().is_some();
         Ok(Self {
             url: url.to_string(),
@@ -99,7 +99,7 @@ fn normalize_short_form(input: &str) -> AppResult<String> {
             pass = parts[3],
         )),
         _ => Err(AppError::Validation(format!(
-            "Proxy '{input}' non reconnu (attendu: scheme://host:port, host:port ou host:port:user:pass)"
+            "unrecognised proxy '{input}' (expected: scheme://host:port, host:port or host:port:user:pass)"
         ))),
     }
 }
@@ -210,7 +210,7 @@ impl ProxyPool {
     /// at quota the future sleeps until the earliest slot is free.
     pub async fn acquire(&self, index: usize) -> AppResult<ProxyLease> {
         if self.is_empty() {
-            return Err(AppError::Validation("Pool de proxies vide".into()));
+            return Err(AppError::Validation("empty proxy pool".into()));
         }
 
         let preferred = (index / self.rotation_every) % self.proxies.len();

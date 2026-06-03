@@ -86,7 +86,7 @@ pub async fn template_get(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID template manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing template id".to_string()))?;
     let template = load_template(state, id)
         .await?
         .ok_or_else(|| AppError::NotFound(id.to_string()))?;
@@ -99,10 +99,10 @@ pub async fn template_save(
 ) -> AppResult<ApiResponse<Value>> {
     let mut template: Template = serde_json::from_value(data)?;
     if template.name.trim().is_empty() {
-        return Ok(ApiResponse::err("Le nom du template est requis"));
+        return Ok(ApiResponse::err("Template name is required"));
     }
     if template.subject.trim().is_empty() {
-        return Ok(ApiResponse::err("Le sujet du template est requis"));
+        return Ok(ApiResponse::err("Template subject is required"));
     }
 
     let is_new = template.id.trim().is_empty();
@@ -134,7 +134,7 @@ pub async fn template_delete(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID template manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing template id".to_string()))?;
     let path = state.paths.templates_dir.join(format!("{}.json", id));
     storage::remove_file_if_exists(&path).await?;
     Ok(ApiResponse::<Value>::empty_ok())
@@ -151,7 +151,7 @@ pub async fn template_folder_save(
 ) -> AppResult<ApiResponse<Value>> {
     let mut incoming: TemplateFolder = serde_json::from_value(data)?;
     if incoming.name.trim().is_empty() {
-        return Ok(ApiResponse::err("Le nom du dossier est requis"));
+        return Ok(ApiResponse::err("Folder name is required"));
     }
 
     let mut folders = load_folders(state).await?;
@@ -189,7 +189,7 @@ pub async fn template_folder_delete(
 ) -> AppResult<ApiResponse<Value>> {
     let id = action
         .get("id")
-        .ok_or_else(|| AppError::Validation("ID dossier manquant".to_string()))?;
+        .ok_or_else(|| AppError::Validation("Missing folder id".to_string()))?;
     let mut folders = load_folders(state).await?;
     folders.retain(|f| f.id != id && f.parent_id.as_deref() != Some(id));
     save_folders(state, &folders).await?;
@@ -254,7 +254,7 @@ pub async fn template_preview_merge(
             .await?
             .ok_or_else(|| AppError::NotFound(id.clone()))?
     } else {
-        return Ok(ApiResponse::err("Aucun template à prévisualiser"));
+        return Ok(ApiResponse::err("No template to preview"));
     };
 
     let recipient = payload.recipient.unwrap_or_else(|| {

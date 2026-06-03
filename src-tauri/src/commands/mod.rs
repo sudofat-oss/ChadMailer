@@ -50,21 +50,21 @@ pub async fn legacy_api(
         "templates" => match method.as_str() {
             "GET" => crate::commands::templates::templates_list(&state).await?,
             "POST" => crate::commands::templates::template_save(&state, data).await?,
-            _ => ApiResponse::err("Méthode templates non supportée"),
+            _ => ApiResponse::err("Unsupported method for templates"),
         },
         "template" => match method.as_str() {
             "GET" => crate::commands::templates::template_get(&state, &action).await?,
             "DELETE" => crate::commands::templates::template_delete(&state, &action).await?,
-            _ => ApiResponse::err("Méthode template non supportée"),
+            _ => ApiResponse::err("Unsupported method for template"),
         },
         "template_folders" => match method.as_str() {
             "GET" => crate::commands::templates::template_folders_list(&state).await?,
             "POST" => crate::commands::templates::template_folder_save(&state, data).await?,
-            _ => ApiResponse::err("Méthode template_folders non supportée"),
+            _ => ApiResponse::err("Unsupported method for template_folders"),
         },
         "template_folder" => match method.as_str() {
             "DELETE" => crate::commands::templates::template_folder_delete(&state, &action).await?,
-            _ => ApiResponse::err("Méthode template_folder non supportée"),
+            _ => ApiResponse::err("Unsupported method for template_folder"),
         },
         "template_move" => crate::commands::templates::template_move(&state, data).await?,
         "template_folder_move" => {
@@ -113,7 +113,7 @@ pub async fn legacy_api(
         "send_test_email" => {
             crate::commands::provider_configs::send_test_email(&state, data).await?
         }
-        other => ApiResponse::err(format!("Action non encore portée vers Rust: {other}")),
+        other => ApiResponse::err(format!("Action not yet ported to Rust: {other}")),
     };
 
     Ok(response)
