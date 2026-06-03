@@ -188,14 +188,26 @@ pub(crate) fn extract_port(cfg: &ProviderConfig) -> AppResult<u16> {
 }
 
 fn parse_mailbox(email: &str, name: Option<&str>) -> AppResult<Mailbox> {
-    let address: Address = email
-        .trim()
+    let raw = email.trim();
+    // Tolerate a `Display Name <addr@host>` value in the address field: extract
+    // the part inside angle brackets and, when no explicit name was given, use
+    // the leading text as the display name.
+    let (addr_str, embedded_name) = match (raw.rfind('<'), raw.rfind('>')) {
+        (Some(lt), Some(gt)) if gt > lt + 1 => {
+            let inner = raw[lt + 1..gt].trim().to_string();
+            let lead = raw[..lt].trim().trim_matches('"').trim().to_string();
+            (inner, if lead.is_empty() { None } else { Some(lead) })
+        }
+        _ => (raw.to_string(), None),
+    };
+    let address: Address = addr_str
         .parse()
         .map_err(|e| AppError::Validation(format!("Invalid address '{email}': {e}")))?;
     let display = name
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(String::from);
+        .map(String::from)
+        .or(embedded_name);
     Ok(Mailbox::new(display, address))
 }
 
@@ -266,6 +278,20 @@ mod tests {
     #[test]
     fn parse_mailbox_rejects_invalid() {
         assert!(parse_mailbox("not-an-email", None).is_err());
+    }
+
+    #[test]
+    fn parse_mailbox_accepts_name_angle_addr() {
+        let m = parse_mailbox("Alice Smith <alice@b.com>", None).unwrap();
+        assert_eq!(m.email.user(), "alice");
+        assert_eq!(m.email.domain(), "b.com");
+        assert_eq!(m.name.as_deref(), Some("Alice Smith"));
+    }
+
+    #[test]
+    fn parse_mailbox_explicit_name_wins_over_embedded() {
+        let m = parse_mailbox("Embedded <alice@b.com>", Some("Explicit")).unwrap();
+        assert_eq!(m.name.as_deref(), Some("Explicit"));
     }
 
     #[test]

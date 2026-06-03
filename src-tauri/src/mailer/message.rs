@@ -107,6 +107,37 @@ impl EmailMessage {
         self
     }
 
+    /// Split any `Display Name <addr@host>` value in `from_email`/`to_email`
+    /// into a bare address plus a display name. API providers (Brevo, SES,
+    /// etc.) expect the address field to contain only the address, so this
+    /// prevents a manually-typed `Name <email>` from producing a malformed
+    /// payload. An explicit `from_name`/`to_name` always wins.
+    pub fn with_normalized_addresses(mut self) -> Self {
+        let (from_addr, from_disp) = split_addr_name(&self.from_email);
+        self.from_email = from_addr;
+        if self
+            .from_name
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
+            self.from_name = from_disp;
+        }
+        let (to_addr, to_disp) = split_addr_name(&self.to_email);
+        self.to_email = to_addr;
+        if self
+            .to_name
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
+            self.to_name = to_disp;
+        }
+        self
+    }
+
     /// Builds the standard `List-Unsubscribe` header pair from `unsubscribe_url`.
     /// Returns an empty vec if no URL is configured.
     pub fn unsubscribe_headers(&self) -> Vec<(String, String)> {
@@ -125,6 +156,21 @@ impl EmailMessage {
             ),
         ]
     }
+}
+
+/// Split a `Display Name <addr@host>` value into `(address, Some(name))`.
+/// A bare address returns `(address, None)`. Surrounding quotes on the name
+/// are stripped.
+fn split_addr_name(value: &str) -> (String, Option<String>) {
+    let raw = value.trim();
+    if let (Some(lt), Some(gt)) = (raw.rfind('<'), raw.rfind('>')) {
+        if gt > lt + 1 {
+            let addr = raw[lt + 1..gt].trim().to_string();
+            let name = raw[..lt].trim().trim_matches('"').trim().to_string();
+            return (addr, if name.is_empty() { None } else { Some(name) });
+        }
+    }
+    (raw.to_string(), None)
 }
 
 /// Best-effort HTML -> plain text conversion. Renders with a generous line
@@ -212,6 +258,33 @@ mod tests {
     #[test]
     fn unsubscribe_headers_empty_when_missing() {
         assert!(ok_message().unsubscribe_headers().is_empty());
+    }
+
+    #[test]
+    fn normalize_splits_embedded_name_when_no_explicit_name() {
+        let mut m = ok_message();
+        m.from_email = "Alice Smith <alice@b.com>".into();
+        m.from_name = None;
+        let m = m.with_normalized_addresses();
+        assert_eq!(m.from_email, "alice@b.com");
+        assert_eq!(m.from_name.as_deref(), Some("Alice Smith"));
+    }
+
+    #[test]
+    fn normalize_keeps_explicit_name() {
+        let mut m = ok_message();
+        m.from_email = "Embedded <alice@b.com>".into();
+        m.from_name = Some("Explicit".into());
+        let m = m.with_normalized_addresses();
+        assert_eq!(m.from_email, "alice@b.com");
+        assert_eq!(m.from_name.as_deref(), Some("Explicit"));
+    }
+
+    #[test]
+    fn normalize_leaves_bare_address_untouched() {
+        let (addr, name) = split_addr_name("alice@b.com");
+        assert_eq!(addr, "alice@b.com");
+        assert!(name.is_none());
     }
 
     #[test]

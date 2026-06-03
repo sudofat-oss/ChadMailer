@@ -116,6 +116,8 @@ pub async fn parse_recipients(data: Value) -> AppResult<ApiResponse<Value>> {
 
 async fn parse_txt(path: &Path) -> AppResult<ParseOutput> {
     let content = tokio::fs::read_to_string(path).await?;
+    // Strip a leading UTF-8 BOM so the first address isn't invalidated.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
     let mut recipients = Vec::new();
     for line in content.lines() {
         let line = line.trim();
@@ -153,9 +155,12 @@ async fn parse_csv(
     path: &Path,
     mapping: Option<&HashMap<String, Value>>,
 ) -> AppResult<ParseOutput> {
-    let bytes = tokio::fs::read(path).await?;
+    let mut bytes = tokio::fs::read(path).await?;
+    strip_bom(&mut bytes);
+    let delimiter = detect_delimiter(&bytes);
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
+        .delimiter(delimiter)
         .from_reader(bytes.as_slice());
     let headers: Vec<String> = reader.headers()?.iter().map(ToString::to_string).collect();
 
@@ -195,14 +200,59 @@ async fn parse_csv(
     })
 }
 
+/// Remove a leading UTF-8 byte-order mark (EF BB BF) if present. Excel and
+/// many Windows tools prepend one, which otherwise corrupts the first CSV
+/// header (`\u{feff}Email`) and makes the email column undetectable.
+fn strip_bom(bytes: &mut Vec<u8>) {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        bytes.drain(0..3);
+    }
+}
+
+/// Sniff the field delimiter from the header line. Defaults to comma, but
+/// detects `;` (common in French/European Excel exports) and tab.
+fn detect_delimiter(bytes: &[u8]) -> u8 {
+    let line_end = bytes
+        .iter()
+        .position(|&b| b == b'\n')
+        .unwrap_or(bytes.len());
+    let line = &bytes[..line_end];
+    let count = |d: u8| line.iter().filter(|&&b| b == d).count();
+    let comma = count(b',');
+    let semicolon = count(b';');
+    let tab = count(b'\t');
+    if semicolon > comma && semicolon >= tab {
+        b';'
+    } else if tab > comma && tab > semicolon {
+        b'\t'
+    } else {
+        b','
+    }
+}
+
 fn map_csv_auto(raw: &HashMap<String, String>) -> HashMap<String, String> {
     let mut row = HashMap::new();
     for (key, value) in raw {
         let normalized = key.trim().to_ascii_lowercase().replace(' ', "_");
         row.insert(normalized, value.trim().to_string());
     }
-    if let Some(v) = row.remove("e-mail") {
-        row.insert("email".to_string(), v);
+    // Map common email-column header variants onto the canonical `email` key
+    // when the file didn't already have one.
+    if !row.contains_key("email") {
+        for alias in [
+            "e-mail",
+            "e_mail",
+            "mail",
+            "email_address",
+            "emailaddress",
+            "courriel",
+            "adresse_email",
+        ] {
+            if let Some(v) = row.remove(alias) {
+                row.insert("email".to_string(), v);
+                break;
+            }
+        }
     }
     row
 }
@@ -325,6 +375,60 @@ mod tests {
         assert_eq!(out.recipients.len(), 1);
         assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
         assert!(out.headers.contains(&"Email".to_string()));
+    }
+
+    #[tokio::test]
+    async fn parse_csv_handles_utf8_bom() {
+        // Excel/Windows exports prepend a UTF-8 BOM; without stripping it the
+        // first header becomes "\u{feff}Email" and every row is dropped.
+        let path = tmp_file("bom.csv", "\u{feff}Email,Name\nalice@example.com,Alice\n");
+        let out = parse_csv(&path, None).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 1);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+        // The BOM must not survive in the header name either.
+        assert!(out.headers.iter().any(|h| h == "Email"));
+    }
+
+    #[tokio::test]
+    async fn parse_csv_detects_semicolon_delimiter() {
+        // French/European Excel uses ';' as the field separator.
+        let path = tmp_file(
+            "semi.csv",
+            "Email;First Name;Last Name\nalice@example.com;Alice;Smith\nbob@example.org;Bob;Jones\n",
+        );
+        let out = parse_csv(&path, None).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 2);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+        assert_eq!(out.recipients[0].get("first_name").unwrap(), "Alice");
+    }
+
+    #[tokio::test]
+    async fn parse_csv_auto_maps_email_address_header() {
+        let path = tmp_file("addr.csv", "Email Address,Name\nalice@example.com,Alice\n");
+        let out = parse_csv(&path, None).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 1);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+    }
+
+    #[test]
+    fn detect_delimiter_picks_expected() {
+        assert_eq!(detect_delimiter(b"a,b,c\n1,2,3"), b',');
+        assert_eq!(detect_delimiter(b"a;b;c\n1;2;3"), b';');
+        assert_eq!(detect_delimiter(b"a\tb\tc\n1\t2\t3"), b'\t');
+        assert_eq!(detect_delimiter(b"email\nalice@example.com"), b',');
+    }
+
+    #[test]
+    fn strip_bom_removes_leading_marker() {
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF, b'a', b'b'];
+        strip_bom(&mut with_bom);
+        assert_eq!(with_bom, b"ab");
+        let mut without = b"ab".to_vec();
+        strip_bom(&mut without);
+        assert_eq!(without, b"ab");
     }
 
     #[tokio::test]

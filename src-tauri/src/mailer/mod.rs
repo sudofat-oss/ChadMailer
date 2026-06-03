@@ -37,13 +37,14 @@ pub async fn send_email_with_client(
         return Err(AppError::Validation(msg));
     }
 
-    let owned;
-    let m: &EmailMessage = if message.needs_text_fallback() {
-        owned = message.clone().with_text_fallback();
-        &owned
-    } else {
-        message
-    };
+    // Normalize `Name <addr>` in address fields (so API payloads get a bare
+    // address) and synthesise a text part for HTML-only mail. Cheap relative
+    // to the network send, so always done.
+    let prepared = message
+        .clone()
+        .with_normalized_addresses()
+        .with_text_fallback();
+    let m = &prepared;
 
     let provider = cfg.provider.to_ascii_lowercase();
     match provider.as_str() {
