@@ -182,10 +182,13 @@ pub async fn verified_senders(
             .await
             .unwrap_or_default(),
         "smtp" | "office365" if !cfg.username.trim().is_empty() => {
+            // The SMTP username is the default sender. Leave the display name
+            // empty (the config name is not an email display name) so the
+            // test email isn't sent as "My Config <user@host>".
             vec![json!({
                 "email": cfg.username.trim(),
-                "name": cfg.name,
-                "label": format!("{} <{}>", cfg.name, cfg.username.trim())
+                "name": "",
+                "label": cfg.username.trim()
             })]
         }
         _ => Vec::new(),

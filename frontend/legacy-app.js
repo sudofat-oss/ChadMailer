@@ -388,12 +388,19 @@ function getCampaignSmtpContextForVerifiedSenders() {
     };
   }
   const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === v);
-  const p = (cfg && cfg.provider) || "";
-  if (p === "brevo" || p === "ses" || p === "amazonses" || p === "sendgrid") {
+  const p = String((cfg && cfg.provider) || "").toLowerCase();
+  // Providers whose verified senders we can list from the API. Mailgun is
+  // intentionally excluded: it allows any address on a verified domain, so
+  // manual entry is more flexible than a one-item dropdown.
+  if (
+    ["brevo", "ses", "amazonses", "sendgrid", "mandrill", "postmark"].includes(
+      p,
+    )
+  ) {
     return {
       supportsApi: true,
       reason: "saved",
-      provider: p === "brevo" ? "brevo" : p === "sendgrid" ? "sendgrid" : "ses",
+      provider: p === "amazonses" ? "ses" : p,
       payload: { smtp_config_id: v },
     };
   }
@@ -592,11 +599,13 @@ async function refreshCampaignVerifiedSenders(opts = {}) {
           : "No sender listed for this account.";
       } else if (senders.length === 0) {
         const who =
-          meta.provider === "ses"
-            ? "SES"
-            : meta.provider === "sendgrid"
-              ? "SendGrid"
-              : "Brevo";
+          {
+            ses: "SES",
+            sendgrid: "SendGrid",
+            brevo: "Brevo",
+            mandrill: "Mandrill",
+            postmark: "Postmark",
+          }[meta.provider] || "provider";
         hintEl.textContent =
           "No active sender found. Check your " + who + " account.";
         hintEl.classList.remove("hidden");
@@ -5792,15 +5801,32 @@ async function initScore() {
 // LAB — TESTING PAGE
 // ============================================
 
-const TESTING_IDENTITY_SELECT_PROVIDERS = new Set([
-  "brevo",
-  "ses",
-  "amazonses",
-  "sendgrid",
-]);
-
 /** @type {Map<string, { email: string, name: string, label: string }>} */
 let testingMailFromIdentityMeta = new Map();
+
+/** Providers that allow sending from an arbitrary From address (in addition
+ *  to any detected identity): SMTP servers, Office365 and Mailgun (any
+ *  address on a verified domain). Brevo / SendGrid / SES / Mandrill / Postmark
+ *  enforce verified senders, so the dropdown is authoritative there. */
+const CUSTOM_FROM_PROVIDERS = new Set(["smtp", "office365", "mailgun"]);
+const CUSTOM_FROM_OPTION = "__custom__";
+
+/** Show/hide the manual From input and sync the display name based on the
+ *  current identity selection. */
+function syncTestingFromSelection() {
+  const fs = document.getElementById("testingMailFromSelect");
+  const wrapInp = document.getElementById("testingMailFromInputWrap");
+  const nameEl = document.getElementById("testingMailFromName");
+  if (!fs) return;
+  const val = fs.value;
+  if (val === CUSTOM_FROM_OPTION) {
+    if (wrapInp) wrapInp.classList.remove("hidden");
+  } else {
+    if (wrapInp) wrapInp.classList.add("hidden");
+    const meta = testingMailFromIdentityMeta.get(String(val).toLowerCase());
+    if (meta && nameEl && !nameEl.value.trim()) nameEl.value = meta.name || "";
+  }
+}
 
 async function refreshTestingMailFromIdentities() {
   const selSmtp = document.getElementById("testingMailSmtpSelect");
@@ -5809,8 +5835,11 @@ async function refreshTestingMailFromIdentities() {
   const hintEl = document.getElementById("testingMailFromIdentityHint");
   const hintNo = document.getElementById("testingMailFromNoConfigHint");
   const fs = document.getElementById("testingMailFromSelect");
-  const fromInput = document.getElementById("testingMailFrom");
   const id = selSmtp?.value?.trim();
+
+  testingMailFromIdentityMeta = new Map();
+
+  // No configuration selected yet.
   if (!id) {
     if (wrapSel) wrapSel.classList.add("hidden");
     if (wrapInp) wrapInp.classList.add("hidden");
@@ -5823,86 +5852,84 @@ async function refreshTestingMailFromIdentities() {
         "Choose an SMTP configuration above to load the sender.";
       hintNo.classList.remove("hidden");
     }
-    testingMailFromIdentityMeta = new Map();
     return;
   }
   if (hintNo) hintNo.classList.add("hidden");
+
   const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === id);
-  const p = cfg ? String(cfg.provider || "").toLowerCase() : "";
-  if (!TESTING_IDENTITY_SELECT_PROVIDERS.has(p)) {
-    if (wrapSel) wrapSel.classList.add("hidden");
-    if (wrapInp) wrapInp.classList.remove("hidden");
-    const smtpUsername = String(cfg?.username || "").trim();
-    const shouldAutofillFrom =
-      (p === "smtp" || p === "office365") && smtpUsername !== "";
-    const previousAuto = String(fromInput?.dataset?.autoFromValue || "").trim();
-    const currentFrom = String(fromInput?.value || "").trim();
-    if (fromInput) {
-      if (shouldAutofillFrom) {
-        if (currentFrom === "" || currentFrom === previousAuto) {
-          fromInput.value = smtpUsername;
-        }
-        fromInput.dataset.autoFromValue = smtpUsername;
-      } else if (fromInput.dataset.autoFromValue) {
-        delete fromInput.dataset.autoFromValue;
-      }
-    }
-    if (hintEl) {
-      hintEl.textContent = shouldAutofillFrom
-        ? "From address pre-filled from the SMTP username (editable)."
-        : "Generic provider: manual entry of the From address.";
-      hintEl.classList.remove("hidden");
-    }
-    if (fs) fs.innerHTML = '<option value="">—</option>';
-    testingMailFromIdentityMeta = new Map();
-    return;
-  }
+  const prov = cfg ? String(cfg.provider || "").toLowerCase() : "";
+  const allowCustom = CUSTOM_FROM_PROVIDERS.has(prov);
+
+  // Always show the identity dropdown and load identities (the backend
+  // returns the username for SMTP, the verified domain for Mailgun, sender
+  // signatures for Postmark/Mandrill, verified senders for Brevo/SES/SendGrid).
   if (wrapSel) wrapSel.classList.remove("hidden");
   if (wrapInp) wrapInp.classList.add("hidden");
+  if (fs) fs.innerHTML = '<option value="">Loading…</option>';
   if (hintEl) {
     hintEl.textContent = "Loading identities…";
     hintEl.classList.remove("hidden");
   }
-  const res = await api("verified_senders", "POST", { smtp_config_id: id });
-  if (!fs) return;
-  if (!res.success) {
-    testingMailFromIdentityMeta = new Map();
-    fs.innerHTML = '<option value="">— Error —</option>';
-    if (hintEl) {
-      hintEl.textContent = "Unable to load identities: " + (res.error || "");
-      hintEl.classList.remove("hidden");
-    }
-    return;
+
+  let senders = [];
+  let loadError = "";
+  try {
+    const res = await api("verified_senders", "POST", { smtp_config_id: id });
+    if (res.success) senders = (res.data && res.data.senders) || [];
+    else loadError = res.error || "API error";
+  } catch (e) {
+    loadError = (e && e.message) || "Network error";
   }
-  const senders = (res.data && res.data.senders) || [];
-  testingMailFromIdentityMeta = new Map();
-  fs.innerHTML =
-    '<option value="">' +
-    (senders.length ? "— Choose an identity —" : "— No identity listed —") +
-    "</option>" +
-    senders
-      .map((s) => {
-        const email = (s.email || "").trim();
-        const name = (s.name != null && String(s.name).trim()) || "";
-        const label =
-          (s.label && String(s.label).trim()) ||
-          (name ? name + " <" + email + ">" : email);
-        if (email) {
-          testingMailFromIdentityMeta.set(email.toLowerCase(), {
-            email,
-            name,
-            label,
-          });
-        }
-        return email
-          ? `<option value="${escAttr(email)}">${escHtml(label)}</option>`
-          : "";
-      })
-      .join("");
+  if (!fs) return;
+
+  let optionsHtml = "";
+  let firstEmail = "";
+  senders.forEach((s) => {
+    const email = (s.email || "").trim();
+    if (!email) return;
+    if (!firstEmail) firstEmail = email;
+    const name = (s.name != null && String(s.name).trim()) || "";
+    const label =
+      (s.label && String(s.label).trim()) ||
+      (name ? name + " <" + email + ">" : email);
+    testingMailFromIdentityMeta.set(email.toLowerCase(), {
+      email,
+      name,
+      label,
+    });
+    optionsHtml += `<option value="${escAttr(email)}">${escHtml(label)}</option>`;
+  });
+  const hasIdentities = testingMailFromIdentityMeta.size > 0;
+
+  const head = hasIdentities
+    ? '<option value="">— Choose an identity —</option>'
+    : '<option value="">— No identity detected —</option>';
+  const customOpt = allowCustom
+    ? `<option value="${CUSTOM_FROM_OPTION}">✏️ Custom address…</option>`
+    : "";
+  fs.innerHTML = head + optionsHtml + customOpt;
+
+  // Default selection: first detected identity (e.g. the SMTP username),
+  // otherwise the custom option when the provider allows free addresses.
+  if (hasIdentities && firstEmail) {
+    fs.value = firstEmail;
+  } else if (allowCustom) {
+    fs.value = CUSTOM_FROM_OPTION;
+  }
+  syncTestingFromSelection();
+
   if (hintEl) {
-    if (senders.length === 0) {
+    if (loadError && !hasIdentities) {
+      hintEl.textContent = allowCustom
+        ? `Could not load identities (${loadError}) — type a custom From address.`
+        : "Unable to load identities: " + loadError;
+    } else if (!hasIdentities) {
+      hintEl.textContent = allowCustom
+        ? "No identity returned by the API — type the From address to use."
+        : "No verified identity for this account. Create a sender identity in Brevo, SendGrid (Sender Authentication) or SES.";
+    } else if (allowCustom) {
       hintEl.textContent =
-        "No verified identity for this account. Create a sender identity in Brevo, SendGrid (Sender Authentication) or SES.";
+        "Pick a detected identity, or choose “Custom address…” to type one.";
     } else {
       hintEl.textContent =
         "Identities authorized by the API: selection required (no manual entry for this provider).";
@@ -6182,13 +6209,7 @@ function initTesting() {
     });
   document
     .getElementById("testingMailFromSelect")
-    ?.addEventListener("change", () => {
-      const v = document.getElementById("testingMailFromSelect")?.value?.trim();
-      if (!v) return;
-      const m = testingMailFromIdentityMeta.get(v.toLowerCase());
-      const nameEl = document.getElementById("testingMailFromName");
-      if (m && nameEl) nameEl.value = m.name || "";
-    });
+    ?.addEventListener("change", syncTestingFromSelection);
   void refreshTestingMailFromIdentities();
 
   document
@@ -6202,9 +6223,22 @@ function initTesting() {
         ? (state.smtpConfigs || []).find((s) => String(s.id) === smtpId)
         : null;
       const prov = cfg ? String(cfg.provider || "").toLowerCase() : "";
-      const from = TESTING_IDENTITY_SELECT_PROVIDERS.has(prov)
-        ? document.getElementById("testingMailFromSelect")?.value?.trim() || ""
-        : document.getElementById("testingMailFrom")?.value?.trim() || "";
+      const allowCustom = CUSTOM_FROM_PROVIDERS.has(prov);
+      const selVal =
+        document.getElementById("testingMailFromSelect")?.value?.trim() || "";
+      const manualFrom =
+        document.getElementById("testingMailFrom")?.value?.trim() || "";
+      // Resolve the From: a picked identity, or the typed custom address
+      // (when 'Custom address…' is selected, or nothing is picked yet on a
+      // provider that allows arbitrary senders).
+      let from;
+      if (selVal === CUSTOM_FROM_OPTION) {
+        from = manualFrom;
+      } else if (selVal) {
+        from = selVal;
+      } else {
+        from = allowCustom ? manualFrom : "";
+      }
       if (!smtpId || !to || !from)
         return alert(
           "SMTP configuration, recipient and sender (From) are required.",
@@ -6668,7 +6702,7 @@ function renderSmtpList(configs) {
           ? buildInspectPreHtml(entry.fetched_at, entry.inspect)
           : `<p class="field-hint">${canInspect ? 'No cached data for this session — click "Query API".' : "API introspection available for Brevo, Amazon SES and SendGrid only."}</p>`;
       const fetchBtn = canInspect
-        ? `<button type="button" class="btn-secondary btn-sm btn-with-icon js-smtp-fetch-inspect">${tyI("refresh-cw", 16)} Interroger l’API</button>`
+        ? `<button type="button" class="btn-secondary btn-sm btn-with-icon js-smtp-fetch-inspect">${tyI("refresh-cw", 16)} Query API</button>`
         : "";
       return `
     <div class="smtp-config-wrap" data-smtp-id="${id}">
