@@ -37,6 +37,13 @@ pub fn run() {
             if let Err(err) = security::secrets::initialize(&paths.data_dir) {
                 tracing::error!("encryption unavailable: {err}");
             }
+            // Recover campaigns left "running"/"paused" by a previous session:
+            // their in-memory send task is gone, so flip them to "interrupted"
+            // so the user can relaunch instead of seeing a frozen "running".
+            let reconcile_paths = paths.clone();
+            tauri::async_runtime::spawn(async move {
+                commands::campaigns::reconcile_orphaned_campaigns(&reconcile_paths).await;
+            });
             app.manage(AppState::new(paths));
             Ok(())
         })

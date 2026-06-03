@@ -5657,3 +5657,80 @@ body {
     color: var(--text-secondary, #94a3b8);
     font-weight: 500;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Connection-test result banner (SMTP / API "Test connection")        */
+/* ------------------------------------------------------------------ */
+.conn-test-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    font-size: 13.5px;
+    line-height: 1.4;
+    /* Override .field-hint defaults when reused on a <p class="field-hint">. */
+    color: var(--text-primary);
+    opacity: 1;
+    animation: conn-test-pop 0.16s ease-out;
+}
+@keyframes conn-test-pop {
+    from {
+        opacity: 0;
+        transform: translateY(-2px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.conn-test-result .conn-test-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.conn-test-result .conn-test-icon .ty-icon {
+    width: 18px;
+    height: 18px;
+}
+.conn-test-result .conn-test-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.conn-test-result .conn-test-title {
+    font-weight: 600;
+}
+.conn-test-result .conn-test-detail {
+    font-size: 12px;
+    opacity: 0.82;
+    word-break: break-word;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+.conn-test-result--ok {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.38);
+    color: #4ade80;
+}
+.conn-test-result--err {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.36);
+    color: #f87171;
+}
+.conn-test-result--pending {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.28);
+    color: var(--text-secondary, #94a3b8);
+}
+.conn-test-spin .ty-icon {
+    animation: conn-test-spin 0.9s linear infinite;
+}
+@keyframes conn-test-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

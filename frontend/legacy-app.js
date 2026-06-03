@@ -1121,6 +1121,66 @@ function tyI(name, size, cls) {
   return typeof tyIcon === "function" ? tyIcon(name, size, cls || "") : "";
 }
 
+/**
+ * Render a styled connection-test result banner into `el`.
+ * Works for SMTP tests (uses host/port/encryption/authenticated from
+ * `res.data` when present) and API-provider pings (just shows success).
+ *
+ * @param {HTMLElement} el       target element (a <p>/<div>)
+ * @param {{success:boolean,data?:object,error?:string}} res  API response
+ * @param {{ successLabel?:string, errorLabel?:string }} [opts]
+ */
+function renderConnTestResult(el, res, opts) {
+  if (!el) return;
+  opts = opts || {};
+  el.classList.remove(
+    "hidden",
+    "conn-test-result--ok",
+    "conn-test-result--err",
+  );
+  el.classList.add("conn-test-result");
+  // Drop any inline color set by older code paths.
+  el.style.color = "";
+
+  if (res && res.success) {
+    el.classList.add("conn-test-result--ok");
+    const d = (res && res.data) || {};
+    const title = opts.successLabel || "Connection successful";
+    const bits = [];
+    if (d.host) bits.push(d.port ? `${d.host}:${d.port}` : String(d.host));
+    if (d.encryption) {
+      const enc = String(d.encryption).trim();
+      if (enc) bits.push(enc.toUpperCase());
+    }
+    if (d.authenticated) bits.push("authenticated");
+    const detail = bits.join(" · ");
+    el.innerHTML =
+      '<span class="conn-test-icon">' +
+      tyI("check-circle", 18) +
+      "</span>" +
+      '<span class="conn-test-body"><span class="conn-test-title">' +
+      escHtml(title) +
+      "</span>" +
+      (detail
+        ? '<span class="conn-test-detail">' + escHtml(detail) + "</span>"
+        : "") +
+      "</span>";
+  } else {
+    el.classList.add("conn-test-result--err");
+    const msg = (res && res.error) || opts.errorLabel || "Unknown error";
+    el.innerHTML =
+      '<span class="conn-test-icon">' +
+      tyI("x-circle", 18) +
+      "</span>" +
+      '<span class="conn-test-body"><span class="conn-test-title">' +
+      escHtml(opts.errorLabel || "Connection failed") +
+      "</span>" +
+      '<span class="conn-test-detail">' +
+      escHtml(msg) +
+      "</span></span>";
+  }
+}
+
 function tySetAccordionChevron(el, open) {
   if (!el) return;
   el.setAttribute("data-ty-icon", open ? "chevron-down" : "chevron-right");
@@ -1203,8 +1263,8 @@ function addCsvCustomVarRow(varName = "", column = "") {
   row.className = "csv-custom-var-row";
   row.innerHTML = `
     <div class="form-group csv-custom-var-field">
-      <label class="csv-custom-field-label" for="csvVarName_${uid}">Nom de la variable</label>
-      <input type="text" id="csvVarName_${uid}" class="csv-custom-name" placeholder="ex. ville" value="${escAttr(varName)}" autocomplete="off">
+      <label class="csv-custom-field-label" for="csvVarName_${uid}">Variable name</label>
+      <input type="text" id="csvVarName_${uid}" class="csv-custom-name" placeholder="e.g. city" value="${escAttr(varName)}" autocomplete="off">
     </div>
     <div class="form-group csv-custom-var-field">
       <label class="csv-custom-field-label" for="csvVarCol_${uid}">CSV column</label>
@@ -2443,15 +2503,7 @@ async function testCampSmtpInline() {
     ...collectCampSmtpData(),
     from_email: from,
   });
-  const tr = document.getElementById("campSmtpTestResult");
-  if (tr) {
-    const err = res.error || "Failed";
-    tr.innerHTML = res.success
-      ? tyI("check", 16) + " <span>Connection successful</span>"
-      : tyI("x-circle", 16) + " <span>" + escHtml(err) + "</span>";
-    tr.style.color = res.success ? "#22c55e" : "#ef4444";
-    tr.classList.remove("hidden");
-  }
+  renderConnTestResult(document.getElementById("campSmtpTestResult"), res);
 }
 
 async function saveCampSmtpAndUse() {
@@ -2826,7 +2878,7 @@ async function initDashboard() {
           return `
           <div class="campaign-row">
             <span class="status-dot" style="background:${statusColor};width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px"></span>
-            <span style="flex:1;font-weight:500">${escHtml(c.name || "Sans nom")}</span>
+            <span style="flex:1;font-weight:500">${escHtml(c.name || "Untitled")}</span>
             <span class="recent-list-meta ty-inline-row">
               ${tyI("check", 14)} <span>${stats.sent || 0}</span>
               <span style="opacity:0.5;margin:0 0.15em">·</span>
@@ -4719,7 +4771,11 @@ function renderCampaignsList(campaigns) {
     done: { icon: "check-circle", text: "Completed", cls: "done" },
     failed: { icon: "x-circle", text: "Failed", cls: "failed" },
     stopped: { icon: "square", text: "Stopped", cls: "done" },
-    interrupted: { icon: "alert-triangle", text: "Interrompue", cls: "failed" },
+    interrupted: {
+      icon: "alert-triangle",
+      text: "Interrupted",
+      cls: "failed",
+    },
     pending: { icon: "clock", text: "Pending", cls: "pending" },
   };
 
@@ -4748,7 +4804,7 @@ function renderCampaignsList(campaigns) {
         <div class="campaign-card-top">
           <div class="campaign-card-info">
             <span class="campaign-status-badge ${sm.cls}">${sm.icon ? tyI(sm.icon, 14) : ""}<span>${escHtml(sm.text)}</span></span>
-            <div class="campaign-card-name">${escHtml(c.name || "Sans nom")}</div>
+            <div class="campaign-card-name">${escHtml(c.name || "Untitled")}</div>
             <div class="campaign-card-date">${date}</div>
           </div>
           <div class="campaign-card-stats">
@@ -4769,7 +4825,7 @@ function renderCampaignsList(campaigns) {
                 ? `
             <div class="campaign-stat-item">
               <span class="campaign-stat-val accent">${pct}%</span>
-              <span class="campaign-stat-lbl">Progression</span>
+              <span class="campaign-stat-lbl">Progress</span>
             </div>`
                 : ""
             }
@@ -5184,7 +5240,7 @@ async function openSendSummaryModal(forceSend = false) {
       ${forceWarn}
       ${scoreBlock}
       <ul class="send-summary-list">
-        <li><span>Nom</span><strong>${escHtml(name)}</strong></li>
+        <li><span>Name</span><strong>${escHtml(name)}</strong></li>
         <li><span>Recipients (file)</span><strong>${total.toLocaleString("en-US")}</strong></li>
         <li><span>Templates</span><strong>${templateNames.length ? escHtml(templateNames.join(", ")) : "—"}</strong></li>
         <li><span>Sender</span><strong>${escHtml(formatSenderRoutingLabel(config))}</strong></li>
@@ -5309,7 +5365,7 @@ async function showCampaignDetail(campaignId) {
     stopped: { icon: "square", text: "Stopped", color: "#f59e0b" },
     interrupted: {
       icon: "alert-triangle",
-      text: "Interrompue",
+      text: "Interrupted",
       color: "#f59e0b",
     },
     pending: { icon: "clock", text: "Pending", color: "#64748b" },
@@ -5422,9 +5478,16 @@ async function showCampaignDetail(campaignId) {
     }
   }
 
-  // Short polling: compatible with php -S (one request at a time; SSE blocked the whole server)
+  // Live updates come from the Tauri event bus (progress + per-line logs).
+  // Only fall back to HTTP polling when those events are unavailable, so we
+  // never append the same log line twice.
   if (campaign.status === "running" || campaign.status === "pending") {
-    startCampaignPolling(campaignId, logsTotal);
+    state.campaignLogCursor = logsTotal;
+    if (!state.liveEventsActive) {
+      startCampaignPolling(campaignId, logsTotal);
+    } else {
+      stopCampaignMonitor();
+    }
   } else {
     stopCampaignMonitor();
   }
@@ -5486,12 +5549,15 @@ async function handleStop() {
   if (!state.currentCampaignId) return;
   if (!confirm("Permanently stop the campaign?")) return;
   await api("stop", "POST", { campaign_id: state.currentCampaignId });
-  // Restart from the currently known cursor to avoid re-streaming old logs.
-  const cursor =
-    typeof state.campaignLogCursor === "number"
-      ? state.campaignLogCursor
-      : document.querySelectorAll("#detailLogsContainer .log-line").length;
-  startCampaignPolling(state.currentCampaignId, cursor);
+  // The `campaign://stopped` event finalizes the UI when the bus is live.
+  // Otherwise resume polling from the current cursor (no re-streaming).
+  if (!state.liveEventsActive) {
+    const cursor =
+      typeof state.campaignLogCursor === "number"
+        ? state.campaignLogCursor
+        : document.querySelectorAll("#detailLogsContainer .log-line").length;
+    startCampaignPolling(state.currentCampaignId, cursor);
+  }
 }
 
 // ============================================
@@ -5625,7 +5691,7 @@ function startCampaignPolling(campaignId, initialCursor = 0) {
           tyI("activity", 12) + " <span>live (auto refresh)</span>";
         indicator.style.color = "#22c55e";
       } else if (camp.status === "paused") {
-        indicator.innerHTML = tyI("pause", 12) + " <span>en pause</span>";
+        indicator.innerHTML = tyI("pause", 12) + " <span>paused</span>";
         indicator.style.color = "#f59e0b";
       } else {
         indicator.innerHTML =
@@ -6069,16 +6135,26 @@ function initTesting() {
         ?.value?.trim();
       const rEl = document.getElementById("testingConnResult");
       if (!id) return alert("Choose a configuration.");
+      if (rEl) {
+        rEl.classList.remove(
+          "hidden",
+          "conn-test-result--ok",
+          "conn-test-result--err",
+        );
+        rEl.classList.add("conn-test-result", "conn-test-result--pending");
+        rEl.style.color = "";
+        rEl.innerHTML =
+          '<span class="conn-test-icon conn-test-spin">' +
+          tyI("refresh-cw", 18) +
+          '</span><span class="conn-test-body"><span class="conn-test-title">Testing connection…</span></span>';
+      }
       const res = await api("test_smtp", "POST", {
         smtp_config_id: id,
         from_email: "test@example.com",
       });
       if (rEl) {
-        rEl.classList.remove("hidden");
-        rEl.textContent = res.success
-          ? "Connection successful."
-          : "Failed: " + (res.error || "");
-        rEl.style.color = res.success ? "#22c55e" : "#ef4444";
+        rEl.classList.remove("conn-test-result--pending");
+        renderConnTestResult(rEl, res);
       }
     });
 
@@ -6511,14 +6587,7 @@ async function initConfig() {
         res = await api("test_smtp", "POST", buildSmtpTestPayloadFromForm());
       }
       const resultEl = document.getElementById("smtpTestResult");
-      if (resultEl) {
-        const err = res.error || "";
-        resultEl.innerHTML = res.success
-          ? tyI("check", 16) + " <span>Connection successful</span>"
-          : tyI("x-circle", 16) + " <span>Failed: " + escHtml(err) + "</span>";
-        resultEl.style.color = res.success ? "#22c55e" : "#ef4444";
-        resultEl.classList.remove("hidden");
-      }
+      renderConnTestResult(resultEl, res);
     });
   }
 
@@ -6702,26 +6771,28 @@ async function editSmtpConfig(id) {
 async function testSavedSmtpConfig(id) {
   const msg = document.getElementById("smtpListTestMessage");
   if (msg) {
-    msg.classList.remove("hidden");
-    msg.textContent = "Testing connection…";
-    msg.style.color = "var(--text-muted)";
+    msg.classList.remove(
+      "hidden",
+      "conn-test-result--ok",
+      "conn-test-result--err",
+    );
+    msg.classList.add("conn-test-result", "conn-test-result--pending");
+    msg.style.color = "";
+    msg.innerHTML =
+      '<span class="conn-test-icon conn-test-spin">' +
+      tyI("refresh-cw", 18) +
+      '</span><span class="conn-test-body"><span class="conn-test-title">Testing connection…</span></span>';
   }
   const res = await api("test_smtp", "POST", {
     smtp_config_id: id,
     from_email: "test@example.com",
   });
   if (msg) {
+    msg.classList.remove("conn-test-result--pending");
     const name = state.smtpConfigs.find((s) => s.id === id)?.name || id;
-    msg.innerHTML = res.success
-      ? tyI("check", 16) +
-        ' <span>Connection successful for "' +
-        escHtml(name) +
-        '"</span>'
-      : tyI("x-circle", 16) +
-        " <span>" +
-        escHtml(res.error || "Test failed") +
-        "</span>";
-    msg.style.color = res.success ? "#22c55e" : "#ef4444";
+    renderConnTestResult(msg, res, {
+      successLabel: `Connection successful for “${name}”`,
+    });
   }
 }
 
@@ -6929,8 +7000,8 @@ function renderSesProbeTable(container, data, context) {
     html += "<td>" + formatSesQuotaNum(r.sent_24h) + "</td>";
     html += "<td>" + formatSesQuotaNum(r.max_rate) + "</td>";
     html +=
-      "<td>" + (ok ? (r.production_access ? "Oui" : "Non") : "—") + "</td>";
-    html += "<td>" + (ok ? (r.sending_enabled ? "Oui" : "Non") : "—") + "</td>";
+      "<td>" + (ok ? (r.production_access ? "Yes" : "No") : "—") + "</td>";
+    html += "<td>" + (ok ? (r.sending_enabled ? "Yes" : "No") : "—") + "</td>";
     html += '<td class="ses-probe-actions">';
     if (ok) {
       const pickLabel = (r.label || r.region || "") + " — " + (r.region || "");
@@ -6939,7 +7010,7 @@ function renderSesProbeTable(container, data, context) {
         escAttr(r.region || "") +
         '" data-label="' +
         escAttr(pickLabel) +
-        '">Utiliser</button>';
+        '">Use</button>';
     } else {
       html +=
         '<span class="ses-probe-err" title="' +
@@ -6969,7 +7040,9 @@ function renderSesInspectResult(container, res, context) {
     return;
   }
   const d = res.data || {};
-  if (d.probe_all_regions) {
+  // The all-regions probe response carries a `regions` array (and a `*`
+  // region marker). Render the multi-region table for any of those signals.
+  if (d.probe_all_regions || Array.isArray(d.regions) || d.region === "*") {
     renderSesProbeTable(container, d, context);
     return;
   }
@@ -7602,6 +7675,13 @@ function appendLiveLogLine(message, level) {
 function wireTauriCampaignEvents() {
   const bus = window.chadMailerEvents;
   if (!bus) return;
+  // When the real-time Tauri event bus is available we drive the campaign
+  // monitor entirely from events and skip the legacy HTTP polling, which
+  // would otherwise re-append log lines and duplicate them.
+  const eventApi = window.__TAURI__ && window.__TAURI__.event;
+  state.liveEventsActive = !!(
+    eventApi && typeof eventApi.listen === "function"
+  );
   bus.onProgress((payload) => {
     if (!payload || state.currentCampaignId !== payload.campaign_id) return;
     updateDetailStatsFromServer(

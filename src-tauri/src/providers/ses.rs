@@ -271,6 +271,8 @@ pub async fn inspect_all_regions(
         .max_by_key(|r| r["max_24h"].as_f64().map(|x| x as i64).unwrap_or(0));
 
     Ok(json!({
+        "provider": "ses",
+        "probe_all_regions": true,
         "region": "*",
         "regions": regions,
         "summary": {

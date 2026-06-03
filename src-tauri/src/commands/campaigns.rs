@@ -2,13 +2,46 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::State;
 
-use crate::app_state::AppState;
+use crate::app_state::{AppPaths, AppState};
 use crate::commands::legacy::LegacyAction;
 use crate::core::api::ApiResponse;
 use crate::core::error::{AppError, AppResult};
 use crate::core::{now_local_string, prefixed_id};
 use crate::storage;
 use tokio::io::AsyncWriteExt;
+
+/// Mark any campaign left in a live state (`running` / `paused`) as
+/// `interrupted` at startup. The send engine lives in memory, so a campaign
+/// that was sending when the app was closed has no task driving it anymore;
+/// without this it would appear "running" forever with no way to recover.
+/// The user can then relaunch it from where it stands.
+pub async fn reconcile_orphaned_campaigns(paths: &AppPaths) {
+    let files = match storage::list_json_files(&paths.campaigns_dir).await {
+        Ok(f) => f,
+        Err(err) => {
+            tracing::warn!(%err, "could not list campaigns for reconciliation");
+            return;
+        }
+    };
+    for file in files {
+        let Ok(mut campaign) = storage::read_json::<Campaign>(&file).await else {
+            continue;
+        };
+        if matches!(campaign.status.as_str(), "running" | "paused") {
+            campaign.status = "interrupted".to_string();
+            campaign.stats.pending = campaign
+                .stats
+                .total
+                .saturating_sub(campaign.stats.sent + campaign.stats.failed);
+            campaign.updated_at = now_local_string();
+            if let Err(err) = storage::write_json_pretty(&file, &campaign).await {
+                tracing::warn!(%err, id = %campaign.id, "could not reconcile campaign");
+            } else {
+                tracing::info!(id = %campaign.id, "reconciled orphaned campaign -> interrupted");
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Campaign {
@@ -75,9 +108,24 @@ pub async fn campaign_get_update_delete(
                 .await?
                 .ok_or_else(|| AppError::NotFound(id.to_string()))?;
             if action.has_flag("with_logs") {
-                let logs = load_campaign_logs(state, id).await?;
+                let all_logs = load_campaign_logs(state, id).await?;
+                let total = all_logs.len();
+                // `log_offset` lets the client stream incrementally: we return
+                // only the lines after the cursor plus the absolute total, so
+                // a poller never re-appends the whole file.
+                let offset = action
+                    .get("log_offset")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    .min(total);
+                let logs: Vec<Value> = all_logs.into_iter().skip(offset).collect();
+                campaign.stats.pending = campaign
+                    .stats
+                    .total
+                    .saturating_sub(campaign.stats.sent + campaign.stats.failed);
                 let mut v = serde_json::to_value(&campaign)?;
                 v["logs"] = json!(logs);
+                v["logs_total"] = json!(total);
                 return Ok(ApiResponse::ok(v));
             }
             campaign.stats.pending = campaign
