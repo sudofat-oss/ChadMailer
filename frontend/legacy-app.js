@@ -5858,7 +5858,7 @@ async function refreshTestingMailFromIdentities() {
 
   const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === id);
   const prov = cfg ? String(cfg.provider || "").toLowerCase() : "";
-  const allowCustom = CUSTOM_FROM_PROVIDERS.has(prov);
+  let allowCustom = CUSTOM_FROM_PROVIDERS.has(prov);
 
   // Always show the identity dropdown and load identities (the backend
   // returns the username for SMTP, the verified domain for Mailgun, sender
@@ -5888,6 +5888,10 @@ async function refreshTestingMailFromIdentities() {
     const email = (s.email || "").trim();
     if (!email) return;
     if (!firstEmail) firstEmail = email;
+    // A `domain` field means this identity authorizes ANY address on that
+    // domain (SES verified domain, SendGrid authenticated domain, Mailgun),
+    // so the user may type a custom address.
+    if (s.domain) allowCustom = true;
     const name = (s.name != null && String(s.name).trim()) || "";
     const label =
       (s.label && String(s.label).trim()) ||

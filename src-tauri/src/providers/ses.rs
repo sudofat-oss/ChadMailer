@@ -152,39 +152,61 @@ pub async fn verified_senders(
 ) -> AppResult<Vec<Value>> {
     validate(access_key, secret_key, region)?;
     let response = list_identities(access_key, secret_key, region).await?;
+    Ok(parse_identities(&response))
+}
 
+/// Turn a SES `ListEmailIdentities` response into selectable sender options.
+///
+/// IdentityType is one of `EMAIL_ADDRESS | DOMAIN | MANAGED_DOMAIN` (SES v2).
+/// A verified DOMAIN authorizes sending from ANY address on that domain, so we
+/// surface domains too — most SES accounts verify domains, not individual
+/// addresses, and dropping them made the sender list look empty.
+pub(crate) fn parse_identities(response: &Value) -> Vec<Value> {
     let mut out = Vec::new();
-    if let Some(arr) = response.get("EmailIdentities").and_then(Value::as_array) {
-        for item in arr {
-            let identity_type = item
-                .get("IdentityType")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let identity_name = item
-                .get("IdentityName")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let sending_enabled = item
-                .get("SendingEnabled")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let verification_status = item
-                .get("VerificationStatus")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+    let Some(arr) = response.get("EmailIdentities").and_then(Value::as_array) else {
+        return out;
+    };
+    for item in arr {
+        let identity_type = item
+            .get("IdentityType")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let identity_name = item
+            .get("IdentityName")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let sending_enabled = item
+            .get("SendingEnabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let verification_status = item
+            .get("VerificationStatus")
+            .and_then(Value::as_str)
+            .unwrap_or("");
 
-            if identity_type == "EMAIL_ADDRESS"
-                && (verification_status == "SUCCESS" || sending_enabled)
-            {
-                out.push(json!({
-                    "email": identity_name,
-                    "name": "",
-                    "label": identity_name,
-                }));
-            }
+        let verified = verification_status == "SUCCESS" || sending_enabled;
+        if identity_name.is_empty() || !verified {
+            continue;
+        }
+
+        match identity_type {
+            "EMAIL_ADDRESS" => out.push(json!({
+                "email": identity_name,
+                "name": "",
+                "label": identity_name,
+            })),
+            "DOMAIN" | "MANAGED_DOMAIN" => out.push(json!({
+                // Suggest a sensible default; SES accepts any local part on a
+                // verified domain (the mailbox need not exist).
+                "email": format!("noreply@{identity_name}"),
+                "name": "",
+                "domain": identity_name,
+                "label": format!("@{identity_name} (verified domain — any address)"),
+            })),
+            _ => {}
         }
     }
-    Ok(out)
+    out
 }
 
 /// Inspect every commonly used SES region in parallel and return a summary.
@@ -361,4 +383,86 @@ async fn list_identities(access_key: &str, secret_key: &str, region: &str) -> Ap
     }
 
     json_response(request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_identities_surfaces_verified_domains() {
+        // The exact shape returned by SES v2 ListEmailIdentities for an
+        // account that verified two domains (no individual email identities).
+        let response = json!({
+            "EmailIdentities": [
+                {
+                    "IdentityName": "hokifyjob.com",
+                    "IdentityType": "DOMAIN",
+                    "SendingEnabled": true,
+                    "VerificationStatus": "SUCCESS"
+                },
+                {
+                    "IdentityName": "hokify.com",
+                    "IdentityType": "DOMAIN",
+                    "SendingEnabled": true,
+                    "VerificationStatus": "SUCCESS"
+                }
+            ],
+            "NextToken": null
+        });
+        let out = parse_identities(&response);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0]["email"], "noreply@hokifyjob.com");
+        assert_eq!(out[0]["domain"], "hokifyjob.com");
+        assert_eq!(out[1]["email"], "noreply@hokify.com");
+        assert!(out[1]["label"]
+            .as_str()
+            .unwrap()
+            .contains("verified domain"));
+    }
+
+    #[test]
+    fn parse_identities_handles_email_addresses() {
+        let response = json!({
+            "EmailIdentities": [
+                {
+                    "IdentityName": "alice@example.com",
+                    "IdentityType": "EMAIL_ADDRESS",
+                    "SendingEnabled": true,
+                    "VerificationStatus": "SUCCESS"
+                }
+            ]
+        });
+        let out = parse_identities(&response);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["email"], "alice@example.com");
+        assert!(out[0].get("domain").is_none());
+    }
+
+    #[test]
+    fn parse_identities_skips_unverified_and_pending() {
+        let response = json!({
+            "EmailIdentities": [
+                {
+                    "IdentityName": "pending.com",
+                    "IdentityType": "DOMAIN",
+                    "SendingEnabled": false,
+                    "VerificationStatus": "PENDING"
+                },
+                {
+                    "IdentityName": "failed@example.com",
+                    "IdentityType": "EMAIL_ADDRESS",
+                    "SendingEnabled": false,
+                    "VerificationStatus": "FAILED"
+                }
+            ]
+        });
+        assert!(parse_identities(&response).is_empty());
+    }
+
+    #[test]
+    fn parse_identities_empty_response() {
+        assert!(parse_identities(&json!({})).is_empty());
+        assert!(parse_identities(&json!({ "EmailIdentities": [] })).is_empty());
+    }
 }

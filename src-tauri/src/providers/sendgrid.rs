@@ -215,6 +215,44 @@ pub async fn verified_senders(
             }));
         }
     }
+
+    // Most SendGrid accounts use Domain Authentication rather than Single
+    // Sender Verification, in which case `/v3/verified_senders` is empty but
+    // you can send from any address on the authenticated domain. Surface those
+    // domains too (best-effort; ignored if the call fails or scope is missing).
+    if let Ok(domains) = json_response(
+        HTTP_CLIENT
+            .get(format!("{base}/v3/whitelabel/domains"))
+            .bearer_auth(api_key),
+    )
+    .await
+    {
+        if let Some(arr) = domains.as_array() {
+            for d in arr {
+                let valid = d.get("valid").and_then(Value::as_bool).unwrap_or(false);
+                if !valid {
+                    continue;
+                }
+                let domain = d.get("domain").and_then(Value::as_str).unwrap_or("");
+                if domain.is_empty() {
+                    continue;
+                }
+                let subdomain = d.get("subdomain").and_then(Value::as_str).unwrap_or("");
+                let sending_domain = if subdomain.is_empty() {
+                    domain.to_string()
+                } else {
+                    format!("{subdomain}.{domain}")
+                };
+                out.push(json!({
+                    "email": format!("noreply@{sending_domain}"),
+                    "name": "",
+                    "domain": sending_domain,
+                    "label": format!("@{sending_domain} (authenticated domain — any address)"),
+                }));
+            }
+        }
+    }
+
     Ok(out)
 }
 
