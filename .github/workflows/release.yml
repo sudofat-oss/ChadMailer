@@ -23,8 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-22.04
-            args: ""
+          # Linux installers (.deb/.rpm/.AppImage) are built locally and
+          # attached to the release directly, so CI only needs to produce the
+          # Windows and macOS artifacts. Re-add an `ubuntu-22.04` entry here if
+          # you want CI to build Linux too.
           - platform: windows-latest
             args: ""
           - platform: macos-latest
