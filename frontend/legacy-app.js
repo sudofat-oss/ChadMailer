@@ -7833,6 +7833,132 @@ function wireTauriCampaignEvents() {
   bus.onFailed(finalize("failed"));
 }
 
+// ============================================
+// AUTO-UPDATE CHECK
+// ============================================
+
+let _updateInfo = null;
+const UPDATE_DISMISS_KEY = "chadmailer_update_dismissed_v";
+
+function isUpdateDismissed(version) {
+  return localStorage.getItem(UPDATE_DISMISS_KEY + version) === "1";
+}
+
+function dismissUpdate(version) {
+  localStorage.setItem(UPDATE_DISMISS_KEY + version, "1");
+}
+
+function showUpdateButton(info) {
+  _updateInfo = info;
+  const navBtn = document.getElementById("updateNavBtn");
+  const panelBtn = document.getElementById("updatePanelBtn");
+  if (navBtn) {
+    navBtn.classList.remove("hidden");
+    navBtn.title = "Update available — v" + info.latest_version;
+  }
+  if (panelBtn) {
+    panelBtn.classList.remove("hidden");
+    panelBtn.textContent = "";
+    const dot = document.createElement("span");
+    dot.className = "update-pulse-dot-sm";
+    panelBtn.appendChild(dot);
+    panelBtn.appendChild(
+      document.createTextNode(" Update v" + info.latest_version),
+    );
+  }
+  if (typeof tyHydrateIcons === "function") {
+    if (navBtn) tyHydrateIcons(navBtn);
+  }
+}
+
+function hideUpdateButton() {
+  const navBtn = document.getElementById("updateNavBtn");
+  const panelBtn = document.getElementById("updatePanelBtn");
+  if (navBtn) navBtn.classList.add("hidden");
+  if (panelBtn) panelBtn.classList.add("hidden");
+}
+
+function openUpdateModal() {
+  if (!_updateInfo) return;
+  const modal = document.getElementById("updateModal");
+  if (!modal) return;
+  document.getElementById("updateCurrentVer").textContent =
+    "v" + _updateInfo.current_version;
+  document.getElementById("updateNewVer").textContent =
+    "v" + _updateInfo.latest_version;
+  const cl = document.getElementById("updateChangelog");
+  if (cl) cl.textContent = _updateInfo.changelog || "";
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  if (typeof tyHydrateIcons === "function") tyHydrateIcons(modal);
+}
+
+function closeUpdateModal() {
+  const modal = document.getElementById("updateModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function initUpdateUI() {
+  const navBtn = document.getElementById("updateNavBtn");
+  const panelBtn = document.getElementById("updatePanelBtn");
+  const dismissBtn = document.getElementById("updateDismissBtn");
+  const downloadBtn = document.getElementById("updateDownloadBtn");
+  const modal = document.getElementById("updateModal");
+
+  if (navBtn) navBtn.addEventListener("click", openUpdateModal);
+  if (panelBtn) panelBtn.addEventListener("click", openUpdateModal);
+
+  if (dismissBtn) {
+    dismissBtn.addEventListener("click", () => {
+      if (_updateInfo) dismissUpdate(_updateInfo.latest_version);
+      closeUpdateModal();
+      hideUpdateButton();
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", async () => {
+      if (_updateInfo && _updateInfo.download_url) {
+        try {
+          const opener = window.__TAURI__?.opener;
+          if (opener && typeof opener.openUrl === "function") {
+            await opener.openUrl(_updateInfo.download_url);
+          } else {
+            window.open(_updateInfo.download_url, "_blank");
+          }
+        } catch (err) {
+          console.error("Failed to open download URL:", err);
+          window.open(_updateInfo.download_url, "_blank");
+        }
+      }
+      closeUpdateModal();
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeUpdateModal();
+    });
+  }
+}
+
+async function checkForUpdate() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return;
+  try {
+    const info = await invoke("check_for_update");
+    if (info && info.update_available) {
+      if (!isUpdateDismissed(info.latest_version)) {
+        showUpdateButton(info);
+      }
+    }
+  } catch (err) {
+    console.debug("Update check failed (non-critical):", err);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   if (document.documentElement) document.documentElement.lang = "en";
   if (typeof tyHydrateIcons === "function") tyHydrateIcons();
@@ -7849,6 +7975,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   initConfig();
   initTesting();
   installFormValuesPersistence();
+  initUpdateUI();
+  checkForUpdate();
 
   // Flush pending input snapshots before the window goes away, so values
   // typed in the last 250ms are not lost on close.

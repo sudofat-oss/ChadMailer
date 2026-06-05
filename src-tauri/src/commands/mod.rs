@@ -126,3 +126,4 @@ pub mod provider_configs;
 pub mod recipients;
 pub mod scoring;
 pub mod templates;
+pub mod update;

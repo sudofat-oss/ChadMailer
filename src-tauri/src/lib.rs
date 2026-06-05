@@ -25,6 +25,7 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let paths = AppPaths::new(data_dir);
@@ -50,7 +51,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health_check,
             commands::legacy_api,
-            commands::recipients::save_upload
+            commands::recipients::save_upload,
+            commands::update::check_for_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running ChadMailer Tauri application");

@@ -217,6 +217,16 @@
                 <div class="sidebar-spacer"></div>
                 <button
                     type="button"
+                    class="nav-icon nav-update-btn hidden"
+                    id="updateNavBtn"
+                    title="Update available"
+                    aria-label="Update available"
+                >
+                    <span class="update-pulse-dot"></span>
+                    <span data-ty-icon="download" data-ty-icon-size="20"></span>
+                </button>
+                <button
+                    type="button"
                     class="nav-icon nav-icon-panel-toggle"
                     id="sidebarPanelToggle"
                     title="Collapse panel"
@@ -265,6 +275,14 @@
                     SMTP / API
                 </button>
                 <div class="panel-spacer"></div>
+                <button
+                    type="button"
+                    class="nav-item nav-update-panel-btn hidden"
+                    id="updatePanelBtn"
+                >
+                    <span class="update-pulse-dot-sm"></span>
+                    Update
+                </button>
                 <button type="button" class="nav-item" data-section="config">
                     Settings
                 </button>
@@ -3219,5 +3237,47 @@
             crossorigin="anonymous"
         ></script>
         <script src="legacy-app.js"></script>
+
+        <!-- Update modal -->
+        <div
+            class="modal-overlay hidden"
+            id="updateModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="updateModalTitle"
+        >
+            <div class="modal-box update-modal-box">
+                <h3 id="updateModalTitle">Update available</h3>
+                <div class="update-versions">
+                    <span
+                        class="update-version-current"
+                        id="updateCurrentVer"
+                    ></span>
+                    <span class="update-arrow">→</span>
+                    <span class="update-version-new" id="updateNewVer"></span>
+                </div>
+                <div class="update-changelog" id="updateChangelog"></div>
+                <div class="update-actions">
+                    <button
+                        type="button"
+                        class="btn-secondary"
+                        id="updateDismissBtn"
+                    >
+                        Later
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-primary btn-with-icon"
+                        id="updateDownloadBtn"
+                    >
+                        <span
+                            data-ty-icon="download"
+                            data-ty-icon-size="16"
+                        ></span>
+                        Download update
+                    </button>
+                </div>
+            </div>
+        </div>
     </body>
 </html>
