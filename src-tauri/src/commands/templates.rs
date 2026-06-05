@@ -190,13 +190,32 @@ pub async fn template_folder_delete(
     let id = action
         .get("id")
         .ok_or_else(|| AppError::Validation("Missing folder id".to_string()))?;
-    let mut folders = load_folders(state).await?;
-    folders.retain(|f| f.id != id && f.parent_id.as_deref() != Some(id));
+    let folders = load_folders(state).await?;
+
+    // Iteratively collect all descendant folder IDs
+    let mut ids_to_delete: Vec<String> = vec![id.to_string()];
+    let mut i = 0;
+    while i < ids_to_delete.len() {
+        let current = ids_to_delete[i].clone();
+        for f in &folders {
+            if f.parent_id.as_deref() == Some(current.as_str()) && !ids_to_delete.contains(&f.id) {
+                ids_to_delete.push(f.id.clone());
+            }
+        }
+        i += 1;
+    }
+
+    let mut folders = folders;
+    folders.retain(|f| !ids_to_delete.contains(&f.id));
     save_folders(state, &folders).await?;
 
     let templates = list_templates_raw(state).await?;
     for mut template in templates {
-        if template.folder_id.as_deref() == Some(id) {
+        let in_deleted = template
+            .folder_id
+            .as_deref()
+            .map_or(false, |fid| ids_to_delete.iter().any(|d| d == fid));
+        if in_deleted {
             template.folder_id = None;
             template.updated_at = now_local_string();
             let path = state

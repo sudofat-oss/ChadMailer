@@ -3935,8 +3935,8 @@ function renderTemplates(templates) {
       </div>
       <div class="template-card-sub">${escHtml(t.subject || "")}</div>
       <div class="template-card-actions">
-        <button type="button" class="btn btn-sm btn-with-icon" onclick="editTemplate('${t.id}')">${tyI("pencil", 15)} Edit</button>
-        <button type="button" class="btn btn-sm btn-danger btn-with-icon" onclick="deleteTemplate('${t.id}')">${tyI("trash", 15)} Delete</button>
+        <button type="button" class="btn btn-sm btn-with-icon" data-action="edit">${tyI("pencil", 15)} Edit</button>
+        <button type="button" class="btn btn-sm btn-danger btn-with-icon" data-action="delete">${tyI("trash", 15)} Delete</button>
       </div>
     </div>
   `,
@@ -3945,7 +3945,9 @@ function renderTemplates(templates) {
 
   // In an empty folder, show a small drop hint.
   const emptyFolderHint =
-    currentFolderId && displayTemplates.length === 0
+    currentFolderId &&
+    displayTemplates.length === 0 &&
+    displayFolders.length === 0
       ? `<div class="empty-state-card" style="grid-column: 1 / -1;">
          <div class="empty-state-icon" aria-hidden="true">${tyI("folder-open", 40)}</div>
          <h2 class="empty-state-title">This folder is empty</h2>
@@ -3956,6 +3958,20 @@ function renderTemplates(templates) {
   list.innerHTML = folderCardsHtml + templateCardsHtml + emptyFolderHint;
 
   if (typeof tyHydrateIcons === "function") tyHydrateIcons(list);
+
+  // Bind template edit/delete buttons via event delegation (CSP blocks inline onclick)
+  list
+    .querySelectorAll(".template-card-actions button[data-action]")
+    .forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const card = btn.closest(".template-card");
+        const id = card && card.dataset.id;
+        if (!id) return;
+        if (btn.dataset.action === "edit") editTemplate(id);
+        else if (btn.dataset.action === "delete") deleteTemplate(id);
+      });
+    });
 
   bindTemplateDragAndDrop(list);
   bindFolderCardInteractions(list);
@@ -4412,6 +4428,7 @@ function openFolderEditDialog(folder) {
   _folderEditCtx = {
     id: folder ? folder.id : "",
     color: folder ? folder.color || "violet" : "violet",
+    parent_id: folder ? folder.parent_id || null : null,
   };
   const title = document.getElementById("folderEditDialogTitle");
   if (title) title.textContent = folder ? "Rename folder" : "New folder";
@@ -4453,6 +4470,7 @@ async function handleFolderEditSave() {
   };
   if (_folderEditCtx.id) {
     payload.id = _folderEditCtx.id;
+    payload.parent_id = _folderEditCtx.parent_id;
   } else {
     // On creation, anchor the new folder in the current folder.
     payload.parent_id = state.currentTemplateFolderId || null;
@@ -4474,10 +4492,7 @@ async function handleFolderEditDelete() {
     )
   )
     return;
-  const res = await api(
-    "template_folder&id=" + encodeURIComponent(_folderEditCtx.id),
-    "DELETE",
-  );
+  const res = await api("template_folder&id=" + _folderEditCtx.id, "DELETE");
   if (!res.success) {
     alert("Deletion error: " + (res.error || ""));
     return;
@@ -4567,6 +4582,7 @@ async function saveTemplate(options = {}) {
   );
 
   if (!name) return alert("Template name is required.");
+  if (!subject) return alert("Template subject is required.");
 
   // Determine the target folder:
   //  - On edit: keep the template's current folder_id (don't move it back to the root)
@@ -5816,14 +5832,53 @@ const CUSTOM_FROM_OPTION = "__custom__";
 function syncTestingFromSelection() {
   const fs = document.getElementById("testingMailFromSelect");
   const wrapInp = document.getElementById("testingMailFromInputWrap");
+  const fromInput = document.getElementById("testingMailFrom");
   const nameEl = document.getElementById("testingMailFromName");
+  const hintEl = document.getElementById("testingMailFromInputHint");
   if (!fs) return;
   const val = fs.value;
-  if (val === CUSTOM_FROM_OPTION) {
+  const meta = testingMailFromIdentityMeta.get(String(val).toLowerCase());
+  const domain = meta && meta.domain ? meta.domain : "";
+
+  // "Custom address…" or a verified-domain identity both require the user to
+  // type the actual From address (any local part on the verified domain).
+  if (val === CUSTOM_FROM_OPTION || domain) {
     if (wrapInp) wrapInp.classList.remove("hidden");
+    if (fromInput) {
+      // Did the selected identity itself change (vs. just re-syncing the same
+      // one)? When it changes we must refresh the address — the previous one
+      // belongs to a different domain and is no longer valid.
+      const switchedIdentity = fromInput.dataset.forIdentity !== val;
+      if (domain) {
+        const suggestion = meta.email || `noreply@${domain}`;
+        const cur = String(fromInput.value || "").trim();
+        const prevAuto = String(fromInput.dataset.autoFromValue || "").trim();
+        // Reset on identity switch; otherwise only fill while untouched so we
+        // don't clobber what the user typed for this same identity.
+        if (switchedIdentity || cur === "" || cur === prevAuto) {
+          fromInput.value = suggestion;
+        }
+        fromInput.dataset.autoFromValue = suggestion;
+      } else if (switchedIdentity) {
+        // Freshly chose "Custom address…": start from a clean field.
+        fromInput.value = "";
+        delete fromInput.dataset.autoFromValue;
+      }
+      fromInput.dataset.forIdentity = val;
+    }
+    if (hintEl) {
+      hintEl.textContent = domain
+        ? `Any address on @${domain} — edit the part before “@”.`
+        : "Type the full From address to send from.";
+      hintEl.classList.remove("hidden");
+    }
   } else {
     if (wrapInp) wrapInp.classList.add("hidden");
-    const meta = testingMailFromIdentityMeta.get(String(val).toLowerCase());
+    if (fromInput) {
+      delete fromInput.dataset.autoFromValue;
+      delete fromInput.dataset.forIdentity;
+    }
+    if (hintEl) hintEl.classList.add("hidden");
     if (meta && nameEl && !nameEl.value.trim()) nameEl.value = meta.name || "";
   }
 }
@@ -5859,6 +5914,16 @@ async function refreshTestingMailFromIdentities() {
   const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === id);
   const prov = cfg ? String(cfg.provider || "").toLowerCase() : "";
   let allowCustom = CUSTOM_FROM_PROVIDERS.has(prov);
+
+  // When the selected SMTP config changes, clear the manual From so the new
+  // identity's suggestion (different domain) prefills cleanly instead of
+  // staying stuck on the previous value.
+  const fromInput = document.getElementById("testingMailFrom");
+  if (fromInput && fromInput.dataset.forConfig !== id) {
+    fromInput.value = "";
+    delete fromInput.dataset.autoFromValue;
+    fromInput.dataset.forConfig = id;
+  }
 
   // Always show the identity dropdown and load identities (the backend
   // returns the username for SMTP, the verified domain for Mailgun, sender
@@ -5900,6 +5965,7 @@ async function refreshTestingMailFromIdentities() {
       email,
       name,
       label,
+      domain: (s.domain && String(s.domain).trim()) || "",
     });
     optionsHtml += `<option value="${escAttr(email)}">${escHtml(label)}</option>`;
   });
@@ -6232,11 +6298,13 @@ function initTesting() {
         document.getElementById("testingMailFromSelect")?.value?.trim() || "";
       const manualFrom =
         document.getElementById("testingMailFrom")?.value?.trim() || "";
-      // Resolve the From: a picked identity, or the typed custom address
-      // (when 'Custom address…' is selected, or nothing is picked yet on a
-      // provider that allows arbitrary senders).
+      // Resolve the From: a picked exact identity, or the typed address when
+      // 'Custom address…' / a verified-domain identity is selected (any local
+      // part on that domain), or nothing picked yet on a flexible provider.
+      const selMeta = testingMailFromIdentityMeta.get(selVal.toLowerCase());
+      const selIsDomain = !!(selMeta && selMeta.domain);
       let from;
-      if (selVal === CUSTOM_FROM_OPTION) {
+      if (selVal === CUSTOM_FROM_OPTION || selIsDomain) {
         from = manualFrom;
       } else if (selVal) {
         from = selVal;

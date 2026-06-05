@@ -2664,6 +2664,17 @@ button:disabled {
     font-weight: 600;
 }
 
+/* Test-send result colours. The theme's --success/--danger are greyscale,
+   so use explicit green/red here (and override .log-target's colour). */
+.testing-mail-log .log-line.ok,
+.testing-mail-log .log-line.ok .log-target {
+    color: #22c55e;
+}
+.testing-mail-log .log-line.failed,
+.testing-mail-log .log-line.failed .log-target {
+    color: #ef4444;
+}
+
 /* ============================================
    SCORE ANALYZER PAGE
    ============================================ */
@@ -4788,9 +4799,6 @@ textarea:focus-visible {
     color: #fff;
 }
 
-.log-line.ok,
-.log-line.failed,
-.log-line.retry,
 .logs-indicator,
 .campaign-edit-banner strong,
 .send-summary-warning strong {

@@ -1,6 +1,6 @@
 [package]
 name = "chadmailer"
-version = "1.0.3"
+version = "1.0.4"
 description = "Native Rust/Tauri email campaign sender"
 authors = ["sudofat-oss"]
 edition = "2021"
