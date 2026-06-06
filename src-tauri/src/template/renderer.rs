@@ -136,4 +136,36 @@ mod tests {
             "Bonjour Alex"
         );
     }
+
+    /// Vérifie que les URLs d'images https:// dans les templates HTML sont
+    /// préservées telles quelles par le moteur de personnalisation.
+    /// Le rendu visuel de ces images dépend du CSP de l'application (img-src https:).
+    #[test]
+    fn preserves_https_image_urls() {
+        let data = HashMap::from([("nom".to_string(), "Dupont".to_string())]);
+        let html =
+            "<img src=\"https://cdn.example.com/banner.jpg\" alt=\"Banner\"> Bonjour {{nom}}";
+        let result = personalize_string(html, &data, None, 0);
+        assert!(
+            result.contains("https://cdn.example.com/banner.jpg"),
+            "L'URL https de l'image doit être préservée intacte"
+        );
+        assert!(
+            result.contains("Bonjour Dupont"),
+            "Les variables doivent être remplacées correctement"
+        );
+    }
+
+    #[test]
+    fn preserves_full_html_document_with_images() {
+        let data = HashMap::from([("prenom".to_string(), "Marie".to_string())]);
+        let html = concat!(
+            "<!DOCTYPE html><html><body>",
+            "<img src=\"https://img.host.com/logo.png\">",
+            "<p>Salut {{prenom}}</p></body></html>"
+        );
+        let result = personalize_string(html, &data, None, 0);
+        assert!(result.contains("https://img.host.com/logo.png"));
+        assert!(result.contains("Salut Marie"));
+    }
 }
