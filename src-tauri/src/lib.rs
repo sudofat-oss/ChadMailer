@@ -58,7 +58,8 @@ pub fn run() {
             commands::recipients::append_upload_chunk,
             commands::recipients::finish_upload,
             commands::recipients::abort_upload,
-            commands::update::check_for_update
+            commands::update::check_for_update,
+            commands::update::install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running ChadMailer Tauri application");

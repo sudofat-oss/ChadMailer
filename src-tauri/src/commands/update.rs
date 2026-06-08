@@ -1,4 +1,10 @@
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tauri::AppHandle;
 
 use crate::core::error::AppError;
 
@@ -20,6 +26,11 @@ pub struct UpdateInfo {
 struct GitHubAsset {
     name: String,
     browser_download_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InstallUpdatePayload {
+    pub download_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +86,21 @@ fn pick_download_url(assets: &[GitHubAsset], fallback: &str) -> String {
         assets
             .iter()
             .find(|a| a.name.to_lowercase().ends_with(".appimage"))
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|a| a.name.to_lowercase().ends_with(".deb"))
+            })
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|a| a.name.to_lowercase().ends_with(".rpm"))
+            })
+            .or_else(|| {
+                assets
+                    .iter()
+                    .find(|a| a.name.to_lowercase().ends_with(".tar.gz"))
+            })
     } else if cfg!(target_os = "macos") {
         assets
             .iter()
@@ -122,6 +148,135 @@ pub async fn check_for_update() -> Result<UpdateInfo, AppError> {
     })
 }
 
+#[tauri::command]
+pub async fn install_update(
+    app: AppHandle,
+    payload: InstallUpdatePayload,
+) -> Result<Value, AppError> {
+    let url = reqwest::Url::parse(&payload.download_url)
+        .map_err(|e| AppError::Validation(format!("Invalid update URL: {e}")))?;
+    if !matches!(url.scheme(), "https" | "http") {
+        return Err(AppError::Validation(
+            "Update URL must be HTTP or HTTPS".to_string(),
+        ));
+    }
+
+    let filename = update_filename_from_url(url.path()).ok_or_else(|| {
+        AppError::Validation(
+            "Update URL does not contain a downloadable asset filename".to_string(),
+        )
+    })?;
+    if !is_direct_update_asset(&filename) {
+        return Err(AppError::Validation(
+            "No direct installer asset is available for this platform.".to_string(),
+        ));
+    }
+
+    let update_dir = std::env::temp_dir().join("ChadMailer-updates");
+    tokio::fs::create_dir_all(&update_dir).await?;
+    let destination = update_dir.join(&filename);
+
+    let client = reqwest::Client::new();
+    let bytes = client
+        .get(url)
+        .header("User-Agent", format!("ChadMailer/{CURRENT_VERSION}"))
+        .send()
+        .await
+        .map_err(|e| AppError::Validation(format!("Failed to download update: {e}")))?
+        .error_for_status()
+        .map_err(|e| AppError::Validation(format!("Update download failed: {e}")))?
+        .bytes()
+        .await
+        .map_err(|e| AppError::Validation(format!("Failed to read update: {e}")))?;
+
+    if bytes.is_empty() {
+        return Err(AppError::Validation(
+            "Downloaded update is empty".to_string(),
+        ));
+    }
+    tokio::fs::write(&destination, &bytes).await?;
+
+    launch_update_asset(&destination)?;
+
+    // On Windows, the NSIS installer must be able to replace the running app.
+    // Give the frontend enough time to receive the command response, then exit.
+    if cfg!(target_os = "windows") {
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(900));
+            app_handle.exit(0);
+        });
+    }
+
+    Ok(json!({
+        "started": true,
+        "path": destination.display().to_string(),
+        "message": if cfg!(target_os = "windows") {
+            "Installer launched. The app will close to complete the update."
+        } else {
+            "Update package opened. Follow your system installer prompts."
+        }
+    }))
+}
+
+fn update_filename_from_url(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next()?.trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(sanitize_update_filename(name))
+    }
+}
+
+fn sanitize_update_filename(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn is_direct_update_asset(filename: &str) -> bool {
+    let name = filename.to_ascii_lowercase();
+    if cfg!(target_os = "windows") {
+        name.ends_with(".exe")
+    } else if cfg!(target_os = "linux") {
+        name.ends_with(".appimage")
+            || name.ends_with(".deb")
+            || name.ends_with(".rpm")
+            || name.ends_with(".tar.gz")
+    } else if cfg!(target_os = "macos") {
+        name.ends_with(".dmg")
+    } else {
+        false
+    }
+}
+
+fn launch_update_asset(path: &Path) -> Result<(), AppError> {
+    let mut command = if cfg!(target_os = "windows") {
+        Command::new(path)
+    } else if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("open");
+        cmd.arg(path);
+        cmd
+    } else {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(path);
+        cmd
+    };
+
+    command
+        .spawn()
+        .map_err(|e| AppError::Validation(format!("Failed to launch update installer: {e}")))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +313,42 @@ mod tests {
     fn is_newer_handles_v_prefix() {
         assert!(is_newer("v1.0.0", "v1.0.1").unwrap());
         assert!(!is_newer("v1.0.1", "1.0.0").unwrap());
+    }
+
+    #[test]
+    fn update_filename_from_url_sanitizes_asset_name() {
+        assert_eq!(
+            update_filename_from_url("/repos/x/releases/assets/ChadMailer_1.0.8_x64-setup.exe")
+                .as_deref(),
+            Some("ChadMailer_1.0.8_x64-setup.exe")
+        );
+        assert_eq!(
+            update_filename_from_url("/bad/..\\evil.exe").as_deref(),
+            Some(".._evil.exe")
+        );
+    }
+
+    #[test]
+    fn sanitize_update_filename_strips_unsafe_chars() {
+        assert_eq!(
+            sanitize_update_filename("hello world!.exe"),
+            "hello_world_.exe"
+        );
+        assert_eq!(sanitize_update_filename("../setup.exe"), ".._setup.exe");
+    }
+
+    #[test]
+    fn direct_asset_detection_matches_current_platform() {
+        if cfg!(target_os = "windows") {
+            assert!(is_direct_update_asset("ChadMailer_1.0.8_x64-setup.exe"));
+            assert!(!is_direct_update_asset("ChadMailer_1.0.8_amd64.deb"));
+        } else if cfg!(target_os = "linux") {
+            assert!(is_direct_update_asset("ChadMailer_1.0.8_amd64.deb"));
+            assert!(is_direct_update_asset(
+                "ChadMailer_1.0.8_linux_x86_64.tar.gz"
+            ));
+            assert!(!is_direct_update_asset("ChadMailer_1.0.8_x64-setup.exe"));
+        }
     }
 
     #[test]

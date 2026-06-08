@@ -6446,12 +6446,14 @@ function syncTestingFromSelection() {
 
 async function refreshTestingMailFromIdentities() {
   const selSmtp = document.getElementById("testingMailSmtpSelect");
+  const selectedSmtpId = selSmtp?.value?.trim() || "";
   const wrapSel = document.getElementById("testingMailFromSelectWrap");
   const wrapInp = document.getElementById("testingMailFromInputWrap");
   const hintEl = document.getElementById("testingMailFromIdentityHint");
   const hintNo = document.getElementById("testingMailFromNoConfigHint");
   const fs = document.getElementById("testingMailFromSelect");
-  const id = selSmtp?.value?.trim();
+  const id = selectedSmtpId;
+  const previousFromSelection = fs?.value || "";
 
   testingMailFromIdentityMeta = new Map();
 
@@ -6540,9 +6542,16 @@ async function refreshTestingMailFromIdentities() {
     : "";
   fs.innerHTML = head + optionsHtml + customOpt;
 
-  // Default selection: first detected identity (e.g. the SMTP username),
-  // otherwise the custom option when the provider allows free addresses.
-  if (hasIdentities && firstEmail) {
+  // Preserve the From identity only if it still exists for the currently
+  // selected SMTP. Do not re-apply all persisted testing form values here:
+  // doing that resets `testingMailSmtpSelect` to the old tested config right
+  // after the user changes it.
+  if (
+    previousFromSelection &&
+    [...fs.options].some((o) => o.value === previousFromSelection)
+  ) {
+    fs.value = previousFromSelection;
+  } else if (hasIdentities && firstEmail) {
     fs.value = firstEmail;
   } else if (allowCustom) {
     fs.value = CUSTOM_FROM_OPTION;
@@ -6567,10 +6576,6 @@ async function refreshTestingMailFromIdentities() {
     }
     hintEl.classList.remove("hidden");
   }
-
-  // The verified-senders <select> was just (re)populated. Apply any persisted
-  // value now that the matching <option> exists.
-  applyStoredFormValues(document.getElementById("page-testing"));
 }
 
 function populateTestingSelects() {
@@ -8481,20 +8486,35 @@ function initUpdateUI() {
 
   if (downloadBtn) {
     downloadBtn.addEventListener("click", async () => {
-      if (_updateInfo && _updateInfo.download_url) {
-        try {
-          const opener = window.__TAURI__?.opener;
-          if (opener && typeof opener.openUrl === "function") {
-            await opener.openUrl(_updateInfo.download_url);
-          } else {
-            window.open(_updateInfo.download_url, "_blank");
-          }
-        } catch (err) {
-          console.error("Failed to open download URL:", err);
-          window.open(_updateInfo.download_url, "_blank");
-        }
+      if (!_updateInfo || !_updateInfo.download_url) return;
+      const invoke = window.__TAURI__?.core?.invoke;
+      if (!invoke) {
+        alert("Native updater unavailable in this environment.");
+        return;
       }
-      closeUpdateModal();
+
+      const previousHtml = downloadBtn.innerHTML;
+      downloadBtn.disabled = true;
+      downloadBtn.innerHTML =
+        tyI("loader", 16) + '<span class="ty-btn-txt">Installing…</span>';
+      try {
+        const res = await invoke("install_update", {
+          payload: {
+            download_url: _updateInfo.download_url,
+          },
+        });
+        alert(
+          (res && res.message) ||
+            "Installer launched. Follow the installer prompts to finish updating.",
+        );
+        closeUpdateModal();
+      } catch (err) {
+        console.error("Failed to install update:", err);
+        alert("Update failed: " + formatUploadError(err));
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = previousHtml;
+        if (typeof tyHydrateIcons === "function") tyHydrateIcons(downloadBtn);
+      }
     });
   }
 
