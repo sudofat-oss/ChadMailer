@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use email_address::EmailAddress;
 use serde::Deserialize;
@@ -51,32 +51,93 @@ pub async fn save_upload(
     file_type: String,
     bytes: Vec<u8>,
 ) -> Result<ApiResponse<Value>, AppError> {
-    if filename.trim().is_empty() {
-        return Ok(ApiResponse::err("Missing filename"));
-    }
+    validate_upload_request(&filename, &file_type)?;
     if bytes.is_empty() {
         return Ok(ApiResponse::err("Empty file"));
     }
 
     storage::ensure_dir(&state.paths.uploads_dir).await?;
     let safe_name = sanitize_filename(&filename);
-    let path = state
-        .paths
-        .uploads_dir
-        .join(format!("{}_{}", uuid::Uuid::new_v4(), safe_name));
+    let path = upload_final_path(&state.paths.uploads_dir, &safe_name, None);
     tokio::fs::write(&path, bytes).await?;
+    upload_response(&path, &file_type).await
+}
+
+#[tauri::command]
+pub async fn start_upload(
+    state: State<'_, AppState>,
+    filename: String,
+    file_type: String,
+) -> Result<ApiResponse<Value>, AppError> {
+    validate_upload_request(&filename, &file_type)?;
+    storage::ensure_dir(&state.paths.uploads_dir).await?;
+    let upload_id = uuid::Uuid::new_v4().to_string();
+    let temp_path = upload_temp_path(&state.paths.uploads_dir, &upload_id)?;
+    tokio::fs::File::create(&temp_path).await?;
+    Ok(ApiResponse::ok(json!({ "upload_id": upload_id })))
+}
+
+#[tauri::command]
+pub async fn append_upload_chunk(
+    state: State<'_, AppState>,
+    upload_id: String,
+    bytes: Vec<u8>,
+) -> Result<ApiResponse<Value>, AppError> {
+    let temp_path = upload_temp_path(&state.paths.uploads_dir, &upload_id)?;
+    let mut file = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open(&temp_path)
+        .await?;
+    use tokio::io::AsyncWriteExt;
+    file.write_all(&bytes).await?;
+    Ok(ApiResponse::<Value>::empty_ok())
+}
+
+#[tauri::command]
+pub async fn finish_upload(
+    state: State<'_, AppState>,
+    upload_id: String,
+    filename: String,
+    file_type: String,
+) -> Result<ApiResponse<Value>, AppError> {
+    validate_upload_request(&filename, &file_type)?;
+    let temp_path = upload_temp_path(&state.paths.uploads_dir, &upload_id)?;
+    let metadata = tokio::fs::metadata(&temp_path).await?;
+    if metadata.len() == 0 {
+        tokio::fs::remove_file(&temp_path).await.ok();
+        return Ok(ApiResponse::err("Empty file"));
+    }
 
     let mut validation = json!({});
     if file_type == "csv" {
-        let parsed = parse_csv(&path, None).await?;
-        validation["headers"] = json!(parsed.headers);
+        match parse_csv(&temp_path, None).await {
+            Ok(parsed) => validation["headers"] = json!(parsed.headers),
+            Err(err) => {
+                tokio::fs::remove_file(&temp_path).await.ok();
+                return Err(err);
+            }
+        }
     }
 
+    let safe_name = sanitize_filename(&filename);
+    let final_path = upload_final_path(&state.paths.uploads_dir, &safe_name, Some(&upload_id));
+    tokio::fs::rename(&temp_path, &final_path).await?;
     Ok(ApiResponse::ok(json!({
-        "filepath": path.display().to_string(),
+        "filepath": final_path.display().to_string(),
         "file_type": file_type,
         "validation": validation
     })))
+}
+
+#[tauri::command]
+pub async fn abort_upload(
+    state: State<'_, AppState>,
+    upload_id: String,
+) -> Result<ApiResponse<Value>, AppError> {
+    if let Ok(temp_path) = upload_temp_path(&state.paths.uploads_dir, &upload_id) {
+        tokio::fs::remove_file(temp_path).await.ok();
+    }
+    Ok(ApiResponse::<Value>::empty_ok())
 }
 
 pub async fn parse_recipients(data: Value) -> AppResult<ApiResponse<Value>> {
@@ -115,9 +176,8 @@ pub async fn parse_recipients(data: Value) -> AppResult<ApiResponse<Value>> {
 }
 
 async fn parse_txt(path: &Path) -> AppResult<ParseOutput> {
-    let content = tokio::fs::read_to_string(path).await?;
-    // Strip a leading UTF-8 BOM so the first address isn't invalidated.
-    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+    let bytes = tokio::fs::read(path).await?;
+    let content = decode_recipient_file_bytes(&bytes);
     let mut recipients = Vec::new();
     for line in content.lines() {
         let line = line.trim();
@@ -155,13 +215,14 @@ async fn parse_csv(
     path: &Path,
     mapping: Option<&HashMap<String, Value>>,
 ) -> AppResult<ParseOutput> {
-    let mut bytes = tokio::fs::read(path).await?;
-    strip_bom(&mut bytes);
-    let delimiter = detect_delimiter(&bytes);
+    let bytes = tokio::fs::read(path).await?;
+    let content = decode_recipient_file_bytes(&bytes);
+    let csv_bytes = content.as_bytes();
+    let delimiter = detect_delimiter(csv_bytes);
     let mut reader = csv::ReaderBuilder::new()
         .flexible(true)
         .delimiter(delimiter)
-        .from_reader(bytes.as_slice());
+        .from_reader(csv_bytes);
     let headers: Vec<String> = reader.headers()?.iter().map(ToString::to_string).collect();
 
     let explicit = mapping
@@ -200,9 +261,157 @@ async fn parse_csv(
     })
 }
 
+fn validate_upload_request(filename: &str, file_type: &str) -> AppResult<()> {
+    if filename.trim().is_empty() {
+        return Err(AppError::Validation("Missing filename".to_string()));
+    }
+    if !matches!(file_type, "csv" | "txt") {
+        return Err(AppError::Validation(format!(
+            "Unsupported file type: {file_type}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_upload_id(upload_id: &str) -> AppResult<uuid::Uuid> {
+    uuid::Uuid::parse_str(upload_id)
+        .map_err(|_| AppError::Validation("Invalid upload id".to_string()))
+}
+
+fn upload_temp_path(uploads_dir: &Path, upload_id: &str) -> AppResult<PathBuf> {
+    let id = validate_upload_id(upload_id)?;
+    Ok(uploads_dir.join(format!("{id}.part")))
+}
+
+fn upload_final_path(uploads_dir: &Path, safe_name: &str, upload_id: Option<&str>) -> PathBuf {
+    let id = upload_id
+        .and_then(|s| uuid::Uuid::parse_str(s).ok())
+        .unwrap_or_else(uuid::Uuid::new_v4);
+    uploads_dir.join(format!("{id}_{safe_name}"))
+}
+
+async fn upload_response(path: &Path, file_type: &str) -> Result<ApiResponse<Value>, AppError> {
+    let mut validation = json!({});
+    if file_type == "csv" {
+        let parsed = parse_csv(path, None).await?;
+        validation["headers"] = json!(parsed.headers);
+    }
+    Ok(ApiResponse::ok(json!({
+        "filepath": path.display().to_string(),
+        "file_type": file_type,
+        "validation": validation
+    })))
+}
+
+/// Decode CSV/TXT files exported by common Windows tools.
+///
+/// Linux/macOS exports are usually UTF-8, but Windows Excel/Notepad may write
+/// recipient lists as UTF-16 (often tab-separated) or legacy Windows-1252
+/// (“ANSI”). Feeding those bytes directly to `csv` or `read_to_string` fails
+/// with invalid UTF-8, which made uploads look broken on Windows.
+fn decode_recipient_file_bytes(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(&bytes[3..]).into_owned();
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return decode_utf16_bytes(&bytes[2..], true);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return decode_utf16_bytes(&bytes[2..], false);
+    }
+
+    if looks_like_utf16_le(bytes) {
+        return decode_utf16_bytes(bytes, true);
+    }
+    if looks_like_utf16_be(bytes) {
+        return decode_utf16_bytes(bytes, false);
+    }
+
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => decode_windows_1252(bytes),
+    }
+}
+
+fn decode_utf16_bytes(bytes: &[u8], little_endian: bool) -> String {
+    let units = bytes.chunks_exact(2).map(|chunk| {
+        if little_endian {
+            u16::from_le_bytes([chunk[0], chunk[1]])
+        } else {
+            u16::from_be_bytes([chunk[0], chunk[1]])
+        }
+    });
+    std::char::decode_utf16(units)
+        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .collect::<String>()
+        .trim_start_matches('\u{feff}')
+        .to_string()
+}
+
+fn looks_like_utf16_le(bytes: &[u8]) -> bool {
+    looks_like_utf16_with_zeroes(bytes, 1)
+}
+
+fn looks_like_utf16_be(bytes: &[u8]) -> bool {
+    looks_like_utf16_with_zeroes(bytes, 0)
+}
+
+fn looks_like_utf16_with_zeroes(bytes: &[u8], zero_offset: usize) -> bool {
+    if bytes.len() < 8 {
+        return false;
+    }
+    let pairs = bytes.len() / 2;
+    if pairs == 0 {
+        return false;
+    }
+    let zeroes = bytes
+        .chunks_exact(2)
+        .filter(|pair| pair.get(zero_offset).copied() == Some(0))
+        .count();
+    zeroes * 100 / pairs >= 60
+}
+
+fn decode_windows_1252(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|&b| match b {
+            0x80 => '€',
+            0x82 => '‚',
+            0x83 => 'ƒ',
+            0x84 => '„',
+            0x85 => '…',
+            0x86 => '†',
+            0x87 => '‡',
+            0x88 => 'ˆ',
+            0x89 => '‰',
+            0x8A => 'Š',
+            0x8B => '‹',
+            0x8C => 'Œ',
+            0x8E => 'Ž',
+            0x91 => '‘',
+            0x92 => '’',
+            0x93 => '“',
+            0x94 => '”',
+            0x95 => '•',
+            0x96 => '–',
+            0x97 => '—',
+            0x98 => '˜',
+            0x99 => '™',
+            0x9A => 'š',
+            0x9B => '›',
+            0x9C => 'œ',
+            0x9E => 'ž',
+            0x9F => 'Ÿ',
+            0x81 | 0x8D | 0x8F | 0x90 | 0x9D => char::REPLACEMENT_CHARACTER,
+            _ => b as char,
+        })
+        .collect()
+}
+
 /// Remove a leading UTF-8 byte-order mark (EF BB BF) if present. Excel and
 /// many Windows tools prepend one, which otherwise corrupts the first CSV
 /// header (`\u{feff}Email`) and makes the email column undetectable.
+#[cfg(test)]
 fn strip_bom(bytes: &mut Vec<u8>) {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
         bytes.drain(0..3);
@@ -341,11 +550,23 @@ mod tests {
     use std::io::Write;
 
     fn tmp_file(name: &str, content: &str) -> std::path::PathBuf {
+        tmp_file_bytes(name, content.as_bytes())
+    }
+
+    fn tmp_file_bytes(name: &str, content: &[u8]) -> std::path::PathBuf {
         let dir = std::env::temp_dir();
         let path = dir.join(format!("chadmailer-test-{}-{}", uuid::Uuid::new_v4(), name));
         let mut f = std::fs::File::create(&path).expect("tmp file");
-        f.write_all(content.as_bytes()).expect("write");
+        f.write_all(content).expect("write");
         path
+    }
+
+    fn utf16le_with_bom(s: &str) -> Vec<u8> {
+        let mut out = vec![0xFF, 0xFE];
+        for unit in s.encode_utf16() {
+            out.extend_from_slice(&unit.to_le_bytes());
+        }
+        out
     }
 
     #[tokio::test]
@@ -388,6 +609,41 @@ mod tests {
         assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
         // The BOM must not survive in the header name either.
         assert!(out.headers.iter().any(|h| h == "Email"));
+    }
+
+    #[tokio::test]
+    async fn parse_csv_handles_utf16le_tab_export() {
+        // Windows Excel can export "Unicode Text" as UTF-16LE + tabs. Users may
+        // still choose that file as CSV/TXT; upload should not fail on Windows.
+        let bytes = utf16le_with_bom("Email\tName\r\nalice@example.com\tAlice\r\n");
+        let path = tmp_file_bytes("utf16.csv", &bytes);
+        let out = parse_csv(&path, None).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 1);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+        assert!(out.headers.iter().any(|h| h == "Email"));
+    }
+
+    #[tokio::test]
+    async fn parse_txt_handles_utf16le_export() {
+        let bytes = utf16le_with_bom("alice@example.com\r\nbob@example.org\r\n");
+        let path = tmp_file_bytes("utf16.txt", &bytes);
+        let out = parse_txt(&path).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 2);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+        assert_eq!(out.recipients[1].get("email").unwrap(), "bob@example.org");
+    }
+
+    #[tokio::test]
+    async fn parse_csv_falls_back_to_windows_1252() {
+        let bytes = b"Email,Name\nalice@example.com,Andr\xE9\n";
+        let path = tmp_file_bytes("cp1252.csv", bytes);
+        let out = parse_csv(&path, None).await.expect("parse ok");
+        std::fs::remove_file(&path).ok();
+        assert_eq!(out.recipients.len(), 1);
+        assert_eq!(out.recipients[0].get("email").unwrap(), "alice@example.com");
+        assert_eq!(out.recipients[0].get("name").unwrap(), "André");
     }
 
     #[tokio::test]

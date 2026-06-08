@@ -173,7 +173,8 @@ pub(crate) fn parse_verified_senders(info: &Value, domain: &str) -> Vec<Value> {
     vec![json!({
         "email": format!("noreply@{domain}"),
         "name": "",
-        "label": format!("@{domain} (verified domain)"),
+        "domain": domain,
+        "label": format!("@{domain} (verified domain — any address)"),
         "hint": "Mailgun allows any address on a verified domain."
     })]
 }
@@ -215,6 +216,7 @@ mod tests {
         let senders = parse_verified_senders(&response, "mg.example.com");
         assert_eq!(senders.len(), 1);
         assert_eq!(senders[0]["email"], "noreply@mg.example.com");
+        assert_eq!(senders[0]["domain"], "mg.example.com");
     }
 
     #[test]

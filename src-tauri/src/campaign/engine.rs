@@ -411,6 +411,31 @@ async fn run_campaign(
         .and_then(Value::as_str)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    let sender_name_rotation_enabled = cfg
+        .get("sender_name_rotation_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let sender_name_rotation_names = parse_sender_name_rotation_names(&cfg);
+    let sender_name_rotation_every = cfg
+        .get("sender_name_rotation_every")
+        .and_then(Value::as_u64)
+        .unwrap_or(1)
+        .max(1) as usize;
+    let sender_local_rotation_enabled = cfg
+        .get("sender_local_rotation_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let sender_local_rotation_parts = parse_sender_local_rotation_parts(&cfg);
+    let sender_local_rotation_domain = cfg
+        .get("sender_local_rotation_domain")
+        .and_then(Value::as_str)
+        .map(|s| s.trim().trim_start_matches('@').to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
+    let sender_local_rotation_every = cfg
+        .get("sender_local_rotation_every")
+        .and_then(Value::as_u64)
+        .unwrap_or(1)
+        .max(1) as usize;
     let unsubscribe_url = cfg
         .get("unsubscribe_url")
         .and_then(Value::as_str)
@@ -487,7 +512,7 @@ async fn run_campaign(
         let provider = &providers[(index / smtp_rotation_every) % providers.len()];
 
         // Resolve from email/name (per SMTP override)
-        let (from_email, from_name) = resolve_sender(
+        let (from_email, mut from_name) = resolve_sender(
             smtp_sender_mode,
             smtp_from_name_mode,
             &from_email_default,
@@ -495,6 +520,23 @@ async fn run_campaign(
             &provider.id,
             provider,
             &smtp_per_smtp,
+        );
+        let from_email = resolve_sender_local_part_rotation(
+            from_email,
+            smtp_sender_mode,
+            sender_local_rotation_enabled,
+            &sender_local_rotation_parts,
+            sender_local_rotation_domain.as_deref(),
+            sender_local_rotation_every,
+            index,
+        );
+        from_name = resolve_sender_name_rotation(
+            from_name,
+            smtp_from_name_mode,
+            sender_name_rotation_enabled,
+            &sender_name_rotation_names,
+            sender_name_rotation_every,
+            index,
         );
 
         // Render template
@@ -889,6 +931,134 @@ fn resolve_provider_ids(cfg: &Value) -> Vec<String> {
     Vec::new()
 }
 
+fn is_valid_email_local_part(part: &str) -> bool {
+    let part = part.trim();
+    !part.is_empty()
+        && part.len() <= 64
+        && part.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(
+                    c,
+                    '.' | '!'
+                        | '#'
+                        | '$'
+                        | '%'
+                        | '&'
+                        | '\''
+                        | '*'
+                        | '+'
+                        | '/'
+                        | '='
+                        | '?'
+                        | '^'
+                        | '_'
+                        | '`'
+                        | '{'
+                        | '|'
+                        | '}'
+                        | '~'
+                        | '-'
+                )
+        })
+}
+
+fn parse_sender_local_rotation_parts(cfg: &Value) -> Vec<String> {
+    let mut seen = HashSet::new();
+    cfg.get("sender_local_rotation_parts")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|part| part.trim().trim_start_matches('@'))
+                .map(|part| part.split('@').next().unwrap_or("").trim())
+                .filter(|part| is_valid_email_local_part(part))
+                .filter_map(|part| {
+                    let key = part.to_ascii_lowercase();
+                    if seen.insert(key) {
+                        Some(part.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn resolve_sender_local_part_rotation(
+    current_email: String,
+    sender_mode: &str,
+    enabled: bool,
+    local_parts: &[String],
+    configured_domain: Option<&str>,
+    rotate_every: usize,
+    email_index0: usize,
+) -> String {
+    // Per-SMTP sender overrides are explicit account-level choices; don't let a
+    // global verified-domain rotation silently rewrite them.
+    if sender_mode == "per_smtp" || !enabled || local_parts.is_empty() {
+        return current_email;
+    }
+
+    let domain = configured_domain
+        .map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+        .or_else(|| {
+            current_email
+                .rsplit_once('@')
+                .map(|(_, d)| d.to_ascii_lowercase())
+        });
+    let Some(domain) = domain else {
+        return current_email;
+    };
+
+    let every = rotate_every.max(1);
+    let idx = (email_index0 / every) % local_parts.len();
+    format!("{}@{}", local_parts[idx], domain)
+}
+
+fn parse_sender_name_rotation_names(cfg: &Value) -> Vec<String> {
+    let mut seen = HashSet::new();
+    cfg.get("sender_name_rotation_names")
+        .and_then(Value::as_array)
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .filter_map(|name| {
+                    let key = name.to_ascii_lowercase();
+                    if seen.insert(key) {
+                        Some(name.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn resolve_sender_name_rotation(
+    current_name: Option<String>,
+    from_name_mode: &str,
+    enabled: bool,
+    names: &[String],
+    rotate_every: usize,
+    email_index0: usize,
+) -> Option<String> {
+    // Per-SMTP names are explicit account-level overrides; keep them authoritative
+    // when enabled so the global rotation does not silently fight SMTP routing.
+    if from_name_mode == "per_smtp" || !enabled || names.is_empty() {
+        return current_name;
+    }
+    let every = rotate_every.max(1);
+    let idx = (email_index0 / every) % names.len();
+    names.get(idx).cloned().or(current_name)
+}
+
 fn resolve_sender(
     sender_mode: &str,
     from_name_mode: &str,
@@ -1156,6 +1326,111 @@ mod tests {
     fn resolve_ids_falls_back_to_primary() {
         let cfg = json!({ "smtp_config_id": "main" });
         assert_eq!(resolve_provider_ids(&cfg), vec!["main"]);
+    }
+
+    #[test]
+    fn parses_sender_local_rotation_parts_cleanly() {
+        let cfg = json!({
+            "sender_local_rotation_parts": [" alex ", "marie@example.com", "", "ALEx", "bad space", "team-1"]
+        });
+        assert_eq!(
+            parse_sender_local_rotation_parts(&cfg),
+            vec![
+                "alex".to_string(),
+                "marie".to_string(),
+                "team-1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn resolves_sender_local_part_rotation_by_email_index() {
+        let parts = vec!["alex".to_string(), "marie".to_string()];
+        let picked: Vec<_> = (0..5)
+            .map(|idx| {
+                resolve_sender_local_part_rotation(
+                    "noreply@example.com".to_string(),
+                    "default",
+                    true,
+                    &parts,
+                    Some("example.com"),
+                    2,
+                    idx,
+                )
+            })
+            .collect();
+        assert_eq!(
+            picked,
+            vec![
+                "alex@example.com",
+                "alex@example.com",
+                "marie@example.com",
+                "marie@example.com",
+                "alex@example.com",
+            ]
+        );
+    }
+
+    #[test]
+    fn per_smtp_sender_email_overrides_local_part_rotation() {
+        let parts = vec!["alex".to_string()];
+        let picked = resolve_sender_local_part_rotation(
+            "custom@example.com".to_string(),
+            "per_smtp",
+            true,
+            &parts,
+            Some("example.com"),
+            1,
+            0,
+        );
+        assert_eq!(picked, "custom@example.com");
+    }
+
+    #[test]
+    fn parses_sender_name_rotation_names_cleanly() {
+        let cfg = json!({
+            "sender_name_rotation_names": [" Alice ", "", "Bob", "alice", "BOB ", "Claire"]
+        });
+        assert_eq!(
+            parse_sender_name_rotation_names(&cfg),
+            vec!["Alice".to_string(), "Bob".to_string(), "Claire".to_string()]
+        );
+    }
+
+    #[test]
+    fn resolves_sender_name_rotation_by_email_index() {
+        let names = vec!["Alice".to_string(), "Bob".to_string()];
+        let picked: Vec<_> = (0..6)
+            .map(|idx| {
+                resolve_sender_name_rotation(
+                    Some("Default".to_string()),
+                    "global",
+                    true,
+                    &names,
+                    2,
+                    idx,
+                )
+                .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            picked,
+            vec!["Alice", "Alice", "Bob", "Bob", "Alice", "Alice"]
+        );
+    }
+
+    #[test]
+    fn per_smtp_sender_name_overrides_rotation() {
+        let names = vec!["Alice".to_string(), "Bob".to_string()];
+        let picked = resolve_sender_name_rotation(
+            Some("Per SMTP".to_string()),
+            "per_smtp",
+            true,
+            &names,
+            1,
+            1,
+        );
+        assert_eq!(picked.as_deref(), Some("Per SMTP"));
     }
 
     #[test]

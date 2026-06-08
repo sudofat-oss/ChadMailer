@@ -52,6 +52,10 @@ pub fn run() {
             commands::health_check,
             commands::legacy_api,
             commands::recipients::save_upload,
+            commands::recipients::start_upload,
+            commands::recipients::append_upload_chunk,
+            commands::recipients::finish_upload,
+            commands::recipients::abort_upload,
             commands::update::check_for_update
         ])
         .run(tauri::generate_context!())

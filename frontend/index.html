@@ -1302,19 +1302,182 @@
                                                 Refresh
                                             </button>
                                         </div>
+                                        <div
+                                            class="verified-domain-from-wrap hidden"
+                                            id="verifiedDomainFromWrap"
+                                        >
+                                            <label for="verifiedDomainFromEmail"
+                                                >Address on verified
+                                                domain</label
+                                            >
+                                            <input
+                                                type="email"
+                                                id="verifiedDomainFromEmail"
+                                                placeholder="noreply@verified-domain.com"
+                                            />
+                                            <p
+                                                class="field-hint"
+                                                id="verifiedDomainFromHint"
+                                            ></p>
+                                        </div>
+                                        <div
+                                            class="sender-local-rotation-panel hidden"
+                                            id="senderLocalRotationPanel"
+                                        >
+                                            <label
+                                                class="smtp-rotation-toggle"
+                                                for="senderLocalRotationEnabled"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    id="senderLocalRotationEnabled"
+                                                />
+                                                <span
+                                                    class="smtp-rotation-toggle-text"
+                                                    >Rotate the address before
+                                                    @</span
+                                                >
+                                            </label>
+                                            <div
+                                                class="sender-local-rotation-fields hidden"
+                                                id="senderLocalRotationFields"
+                                            >
+                                                <div class="form-row">
+                                                    <div class="form-group">
+                                                        <label
+                                                            >Local parts
+                                                            <span
+                                                                class="label-hint"
+                                                                >(one per
+                                                                line)</span
+                                                            ></label
+                                                        >
+                                                        <textarea
+                                                            id="senderLocalRotationParts"
+                                                            placeholder="alex&#10;marie&#10;team"
+                                                            rows="4"
+                                                        ></textarea>
+                                                        <p class="field-hint">
+                                                            Only write the part
+                                                            before @. The
+                                                            selected verified
+                                                            domain is added
+                                                            automatically.
+                                                        </p>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label
+                                                            >Switch local part
+                                                            every X
+                                                            emails</label
+                                                        >
+                                                        <input
+                                                            type="number"
+                                                            id="senderLocalRotationEvery"
+                                                            value="1"
+                                                            min="1"
+                                                            step="1"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <p
+                                                    class="field-hint"
+                                                    id="senderLocalRotationHint"
+                                                    aria-live="polite"
+                                                ></p>
+                                            </div>
+                                        </div>
                                         <p
                                             class="field-hint hidden"
                                             id="fromEmailListHint"
                                             aria-live="polite"
                                         ></p>
                                     </div>
-                                    <div class="form-group">
+                                    <div class="form-group" id="fromNameGroup">
                                         <label>From (display name)</label>
                                         <input
                                             type="text"
                                             id="fromName"
                                             placeholder="My Newsletter"
                                         />
+                                        <p class="field-hint">
+                                            Used as the default sender name. You
+                                            can rotate several names below for
+                                            warmer, more natural campaigns.
+                                        </p>
+                                    </div>
+                                    <div
+                                        class="form-group sender-name-rotation-toggle-group"
+                                    >
+                                        <label
+                                            class="smtp-rotation-toggle"
+                                            for="senderNameRotationEnabled"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                id="senderNameRotationEnabled"
+                                            />
+                                            <span
+                                                class="smtp-rotation-toggle-text"
+                                                >Sender name rotation</span
+                                            >
+                                        </label>
+                                        <p class="field-hint">
+                                            Rotate only the display name while
+                                            keeping the selected From email and
+                                            SMTP routing. When enabled, use only
+                                            the list below.
+                                        </p>
+                                    </div>
+                                    <div
+                                        class="sender-name-rotation-panel hidden"
+                                        id="senderNameRotationPanel"
+                                    >
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label
+                                                    >Sender names
+                                                    <span class="label-hint"
+                                                        >(one per line)</span
+                                                    ></label
+                                                >
+                                                <textarea
+                                                    id="senderNameRotationNames"
+                                                    placeholder="Alex from ChadMailer&#10;Marie from ChadMailer&#10;ChadMailer Team"
+                                                    rows="4"
+                                                ></textarea>
+                                                <p class="field-hint">
+                                                    Empty lines are ignored and
+                                                    duplicates are removed. If
+                                                    the list is empty, the
+                                                    default display name above
+                                                    is used.
+                                                </p>
+                                            </div>
+                                            <div class="form-group">
+                                                <label
+                                                    >Switch name every X
+                                                    emails</label
+                                                >
+                                                <input
+                                                    type="number"
+                                                    id="senderNameRotationEvery"
+                                                    value="1"
+                                                    min="1"
+                                                    step="1"
+                                                />
+                                                <p class="field-hint">
+                                                    Example: 2 names + value 5 =
+                                                    first name for 5 recipients,
+                                                    second for the next 5.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <p
+                                            class="field-hint"
+                                            id="senderNameRotationHint"
+                                            aria-live="polite"
+                                        ></p>
                                     </div>
                                     <div class="form-row">
                                         <div class="form-group">

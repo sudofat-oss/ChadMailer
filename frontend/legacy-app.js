@@ -46,6 +46,11 @@ const state = {
   },
 };
 
+/** @type {Map<string, { email: string, name: string, label: string, domain: string }>} */
+let campaignFromIdentityMeta = new Map();
+
+const VERIFIED_DOMAIN_LOCAL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i;
+
 /**
  * SES regions (forms) - aligned with SesAccountInspector::PROBE_REGIONS (PHP).
  * @type {{ v: string, l: string }[]}
@@ -389,13 +394,19 @@ function getCampaignSmtpContextForVerifiedSenders() {
   }
   const cfg = (state.smtpConfigs || []).find((s) => String(s.id) === v);
   const p = String((cfg && cfg.provider) || "").toLowerCase();
-  // Providers whose verified senders we can list from the API. Mailgun is
-  // intentionally excluded: it allows any address on a verified domain, so
-  // manual entry is more flexible than a one-item dropdown.
+  // Providers whose verified senders/domains we can list from the API.
+  // Domain identities (SES, SendGrid authenticated domains, Mailgun) are
+  // handled as editable addresses in the campaign form.
   if (
-    ["brevo", "ses", "amazonses", "sendgrid", "mandrill", "postmark"].includes(
-      p,
-    )
+    [
+      "brevo",
+      "ses",
+      "amazonses",
+      "sendgrid",
+      "mandrill",
+      "postmark",
+      "mailgun",
+    ].includes(p)
   ) {
     return {
       supportsApi: true,
@@ -413,10 +424,74 @@ function getCampaignSmtpContextForVerifiedSenders() {
   };
 }
 
+function getCampaignSelectedFromMeta() {
+  const sel = document.getElementById("fromEmailSelect");
+  if (!sel || sel.classList.contains("hidden")) return null;
+  const val = String(sel.value || "").toLowerCase();
+  return campaignFromIdentityMeta.get(val) || null;
+}
+
+function splitEmailAddress(email) {
+  const raw = String(email || "").trim();
+  const at = raw.lastIndexOf("@");
+  if (at <= 0 || at >= raw.length - 1) return { local: "", domain: "" };
+  return {
+    local: raw.slice(0, at),
+    domain: raw.slice(at + 1).toLowerCase(),
+  };
+}
+
+function normalizeVerifiedDomainLocalPart(value) {
+  const local = String(value || "")
+    .trim()
+    .replace(/^@+/, "")
+    .split("@")[0]
+    .trim();
+  return local && VERIFIED_DOMAIN_LOCAL_RE.test(local) ? local : "";
+}
+
+function getSenderLocalRotationPartsFromTextarea() {
+  const ta = document.getElementById("senderLocalRotationParts");
+  const seen = new Set();
+  return String((ta && ta.value) || "")
+    .split(/\r?\n/)
+    .map(normalizeVerifiedDomainLocalPart)
+    .filter(Boolean)
+    .filter((part) => {
+      const key = part.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getSenderLocalRotationEvery() {
+  const el = document.getElementById("senderLocalRotationEvery");
+  return Math.max(1, parseInt(el && el.value, 10) || 1);
+}
+
+function getVerifiedDomainFromEmailValue() {
+  const domain = getCampaignSelectedFromMeta()?.domain || "";
+  const inp = document.getElementById("verifiedDomainFromEmail");
+  const value = String((inp && inp.value) || "").trim();
+  if (!domain) return value;
+  const parsed = splitEmailAddress(value);
+  if (
+    parsed.domain === domain &&
+    normalizeVerifiedDomainLocalPart(parsed.local)
+  ) {
+    return `${parsed.local}@${domain}`;
+  }
+  const local = normalizeVerifiedDomainLocalPart(value);
+  return local ? `${local}@${domain}` : "";
+}
+
 function getFromEmailValue() {
   const sel = document.getElementById("fromEmailSelect");
   const inp = document.getElementById("fromEmail");
   if (sel && !sel.classList.contains("hidden")) {
+    const meta = getCampaignSelectedFromMeta();
+    if (meta && meta.domain) return getVerifiedDomainFromEmailValue();
     return (sel.value || "").trim();
   }
   if (inp && !inp.readOnly) {
@@ -425,11 +500,117 @@ function getFromEmailValue() {
   return "";
 }
 
+function resetCampaignVerifiedDomainControls(clearValues = true) {
+  const wrap = document.getElementById("verifiedDomainFromWrap");
+  const panel = document.getElementById("senderLocalRotationPanel");
+  const fields = document.getElementById("senderLocalRotationFields");
+  const input = document.getElementById("verifiedDomainFromEmail");
+  const enabled = document.getElementById("senderLocalRotationEnabled");
+  if (wrap) wrap.classList.add("hidden");
+  if (panel) panel.classList.add("hidden");
+  if (fields) fields.classList.add("hidden");
+  if (input && clearValues) {
+    input.value = "";
+    delete input.dataset.autoFromValue;
+    delete input.dataset.forIdentity;
+  }
+  if (enabled && clearValues) enabled.checked = false;
+  updateSenderLocalRotationHint();
+}
+
+function updateCampaignVerifiedDomainControls(preferredEmail = "") {
+  const meta = getCampaignSelectedFromMeta();
+  const wrap = document.getElementById("verifiedDomainFromWrap");
+  const input = document.getElementById("verifiedDomainFromEmail");
+  const hint = document.getElementById("verifiedDomainFromHint");
+  const panel = document.getElementById("senderLocalRotationPanel");
+  const domain = meta && meta.domain ? meta.domain : "";
+  if (!domain) {
+    if (wrap) wrap.classList.add("hidden");
+    if (panel) panel.classList.add("hidden");
+    updateSenderLocalRotationHint();
+    return;
+  }
+
+  if (wrap) wrap.classList.remove("hidden");
+  if (panel) panel.classList.remove("hidden");
+  if (input) {
+    const suggestion = meta.email || `noreply@${domain}`;
+    const preferred = String(preferredEmail || "").trim();
+    const parsedPreferred = splitEmailAddress(preferred);
+    const next = parsedPreferred.domain === domain ? preferred : suggestion;
+    const switchedIdentity =
+      input.dataset.forIdentity !== String(meta.email || "");
+    const cur = String(input.value || "").trim();
+    const prevAuto = String(input.dataset.autoFromValue || "").trim();
+    if (switchedIdentity || cur === "" || cur === prevAuto) {
+      input.value = next;
+    }
+    input.dataset.autoFromValue = next;
+    input.dataset.forIdentity = String(meta.email || "");
+  }
+  if (hint) {
+    hint.textContent = `Verified domain @${domain}: type any local part before “@” (for example alex@${domain}).`;
+    hint.classList.remove("hidden");
+  }
+  updateSenderLocalRotationHint();
+}
+
+function updateSenderLocalRotationHint() {
+  const hint = document.getElementById("senderLocalRotationHint");
+  const fields = document.getElementById("senderLocalRotationFields");
+  const enabled = !!document.getElementById("senderLocalRotationEnabled")
+    ?.checked;
+  const meta = getCampaignSelectedFromMeta();
+  const domain = meta && meta.domain ? meta.domain : "";
+  const parts = getSenderLocalRotationPartsFromTextarea();
+  const every = getSenderLocalRotationEvery();
+  if (fields) fields.classList.toggle("hidden", !enabled);
+  if (!hint) return;
+  if (!domain) {
+    hint.textContent = "";
+    return;
+  }
+  if (!enabled) {
+    hint.textContent = "";
+    return;
+  }
+  if (parts.length === 0) {
+    hint.textContent = `Add local parts to rotate addresses on @${domain}.`;
+    return;
+  }
+  const sample = parts
+    .slice(0, 3)
+    .map((p) => `${p}@${domain}`)
+    .join(" → ");
+  hint.textContent = `Rotation ready: ${parts.length} address(es), switching every ${every} email(s). ${sample}${parts.length > 3 ? " → …" : ""}`;
+}
+
+function setSenderLocalRotationUiFromConfig(cfg = {}) {
+  const enabledEl = document.getElementById("senderLocalRotationEnabled");
+  const partsEl = document.getElementById("senderLocalRotationParts");
+  const everyEl = document.getElementById("senderLocalRotationEvery");
+  if (enabledEl) enabledEl.checked = !!cfg.sender_local_rotation_enabled;
+  if (partsEl) {
+    const parts = Array.isArray(cfg.sender_local_rotation_parts)
+      ? cfg.sender_local_rotation_parts
+      : [];
+    partsEl.value = parts.map(String).filter(Boolean).join("\n");
+  }
+  if (everyEl)
+    everyEl.value = String(
+      Math.max(1, parseInt(cfg.sender_local_rotation_every, 10) || 1),
+    );
+  updateSenderLocalRotationHint();
+}
+
 function applyCampaignFromEmailBlockedMode(message) {
   const sel = document.getElementById("fromEmailSelect");
   const inp = document.getElementById("fromEmail");
   const btn = document.getElementById("refreshVerifiedSendersBtn");
   const hint = document.getElementById("fromEmailListHint");
+  campaignFromIdentityMeta = new Map();
+  resetCampaignVerifiedDomainControls();
   if (sel) {
     sel.classList.add("hidden");
     sel.innerHTML = "";
@@ -454,6 +635,8 @@ function applyCampaignFromEmailManualMode(value) {
   const inp = document.getElementById("fromEmail");
   const btn = document.getElementById("refreshVerifiedSendersBtn");
   const hint = document.getElementById("fromEmailListHint");
+  campaignFromIdentityMeta = new Map();
+  resetCampaignVerifiedDomainControls();
   if (sel) {
     sel.classList.add("hidden");
     sel.innerHTML = "";
@@ -477,6 +660,8 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
   const inp = document.getElementById("fromEmail");
   const btn = document.getElementById("refreshVerifiedSendersBtn");
   const hint = document.getElementById("fromEmailListHint");
+  campaignFromIdentityMeta = new Map();
+  resetCampaignVerifiedDomainControls(false);
   if (inp) {
     inp.classList.add("hidden");
     inp.readOnly = false;
@@ -489,40 +674,71 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
     const o0 = document.createElement("option");
     o0.value = "";
     o0.textContent = senders.length
-      ? "— Choose a sender —"
+      ? "— Choose a sender or verified domain —"
       : "— No sender available —";
     sel.appendChild(o0);
+
     (senders || []).forEach((s) => {
+      const email = String(s.email || "").trim();
+      if (!email) return;
+      const domain = String(s.domain || "")
+        .trim()
+        .toLowerCase();
+      const name = String(s.name || "").trim();
+      const label =
+        String(s.label || "").trim() || (name ? `${name} <${email}>` : email);
+      campaignFromIdentityMeta.set(email.toLowerCase(), {
+        email,
+        name,
+        label,
+        domain,
+      });
       const o = document.createElement("option");
-      o.value = s.email;
-      o.textContent = s.label || s.email;
+      o.value = email;
+      o.textContent = label;
+      if (domain) o.dataset.verifiedDomain = domain;
       sel.appendChild(o);
     });
+
     const pref = (preferredEmail || "").trim().toLowerCase();
+    const prefParts = splitEmailAddress(pref);
     let picked = "";
     if (pref) {
-      const match = [...sel.options].find(
+      const exact = [...sel.options].find(
         (x) => (x.value || "").toLowerCase() === pref,
       );
-      if (match) {
-        sel.value = match.value;
-        picked = match.value;
+      if (exact) {
+        sel.value = exact.value;
+        picked = exact.value;
+      } else if (prefParts.domain) {
+        const domainMatch = [...campaignFromIdentityMeta.values()].find(
+          (m) => m.domain && m.domain === prefParts.domain,
+        );
+        if (domainMatch) {
+          sel.value = domainMatch.email;
+          picked = domainMatch.email;
+        }
       }
     }
     if (!picked && senders.length === 1) {
-      sel.value = senders[0].email;
+      sel.value = String(senders[0].email || "");
       picked = sel.value;
     }
+    updateCampaignVerifiedDomainControls(preferredEmail);
     if (hint) {
-      if (pref && !picked) {
+      const selectedMeta = getCampaignSelectedFromMeta();
+      if (selectedMeta && selectedMeta.domain) {
+        hint.textContent = `Verified domain detected: you can send from any address on @${selectedMeta.domain}.`;
+        hint.classList.remove("hidden");
+      } else if (pref && !picked) {
         hint.textContent =
-          "The saved address is not in the current list. Choose a verified sender on " +
+          "The saved address is not in the current list. Choose a verified sender/domain on " +
           (senders.length ? "provider" : "account") +
           ".";
         hint.classList.remove("hidden");
       } else {
         hint.textContent =
-          "Addresses authorized by your provider (API). No manual input.";
+          "Addresses authorized by your provider API. Verified domains allow custom local parts.";
         hint.classList.remove("hidden");
       }
     }
@@ -533,7 +749,10 @@ function ensureFromEmailSelectChangeHook() {
   const sel = document.getElementById("fromEmailSelect");
   if (!sel || sel.dataset.fromHook === "1") return;
   sel.dataset.fromHook = "1";
-  sel.addEventListener("change", refreshCampaignSendButtonState);
+  sel.addEventListener("change", () => {
+    updateCampaignVerifiedDomainControls();
+    refreshCampaignSendButtonState();
+  });
 }
 
 async function refreshCampaignVerifiedSenders(opts = {}) {
@@ -1539,6 +1758,83 @@ function openCampaignFormAccordionSection(dataSection) {
   });
 }
 
+function getSenderNameRotationNamesFromTextarea() {
+  const ta = document.getElementById("senderNameRotationNames");
+  const seen = new Set();
+  return String((ta && ta.value) || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((name) => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getSenderNameRotationEvery() {
+  const el = document.getElementById("senderNameRotationEvery");
+  return Math.max(1, parseInt(el && el.value, 10) || 1);
+}
+
+function syncSenderNameRotationUi() {
+  const enabled = !!document.getElementById("senderNameRotationEnabled")
+    ?.checked;
+  const group = document.getElementById("fromNameGroup");
+  if (group) group.classList.toggle("hidden", enabled);
+}
+
+function updateSenderNameRotationHint() {
+  syncSenderNameRotationUi();
+  const hint = document.getElementById("senderNameRotationHint");
+  if (!hint) return;
+  const enabled = !!document.getElementById("senderNameRotationEnabled")
+    ?.checked;
+  const names = getSenderNameRotationNamesFromTextarea();
+  const every = getSenderNameRotationEvery();
+  const perSmtpNameMode =
+    document.getElementById("smtpFromNameMode")?.value === "per_smtp";
+
+  if (!enabled) {
+    hint.textContent = "";
+    return;
+  }
+  if (perSmtpNameMode) {
+    hint.textContent =
+      "Per-SMTP sender names are enabled, so those overrides take priority over this rotation.";
+    return;
+  }
+  if (names.length === 0) {
+    hint.textContent =
+      "Add at least one name to rotate. Until then, the default display name above will be used.";
+    return;
+  }
+  const sample = names.slice(0, 3).join(" → ");
+  hint.textContent = `Rotation ready: ${names.length} name(s), switching every ${every} email(s). ${sample}${names.length > 3 ? " → …" : ""}`;
+}
+
+function setSenderNameRotationUiFromConfig(cfg = {}) {
+  const enabledEl = document.getElementById("senderNameRotationEnabled");
+  const panel = document.getElementById("senderNameRotationPanel");
+  const namesEl = document.getElementById("senderNameRotationNames");
+  const everyEl = document.getElementById("senderNameRotationEvery");
+  const enabled = !!cfg.sender_name_rotation_enabled;
+  if (enabledEl) enabledEl.checked = enabled;
+  if (panel) panel.classList.toggle("hidden", !enabled);
+  if (namesEl) {
+    const names = Array.isArray(cfg.sender_name_rotation_names)
+      ? cfg.sender_name_rotation_names
+      : [];
+    namesEl.value = names.map(String).filter(Boolean).join("\n");
+  }
+  if (everyEl)
+    everyEl.value = String(
+      Math.max(1, parseInt(cfg.sender_name_rotation_every, 10) || 1),
+    );
+  updateSenderNameRotationHint();
+}
+
 function collectCampaignConfig(extra = {}) {
   const chips = document.querySelectorAll(".template-chip.selected");
   const templateIds = Array.from(chips)
@@ -1574,6 +1870,15 @@ function collectCampaignConfig(extra = {}) {
       ? "per_smtp"
       : "global";
   const smtpPerSmtp = collectSmtpPerSenderMapFromUi();
+  const senderNameRotationEnabled = !!document.getElementById(
+    "senderNameRotationEnabled",
+  )?.checked;
+  const senderNameRotationNames = getSenderNameRotationNamesFromTextarea();
+  const senderLocalRotationEnabled = !!document.getElementById(
+    "senderLocalRotationEnabled",
+  )?.checked;
+  const senderLocalRotationParts = getSenderLocalRotationPartsFromTextarea();
+  const senderLocalRotationDomain = getCampaignSelectedFromMeta()?.domain || "";
   const delayMinEl = document.getElementById("delayMin");
   const delayMaxEl = document.getElementById("delayMax");
   const parseDelaySec = (el) => {
@@ -1592,7 +1897,9 @@ function collectCampaignConfig(extra = {}) {
   const base = {
     template_ids: templateIds,
     from_email: getFromEmailValue(),
-    from_name: (document.getElementById("fromName") || {}).value.trim() || "",
+    from_name: senderNameRotationEnabled
+      ? ""
+      : (document.getElementById("fromName") || {}).value.trim() || "",
     smtp_config_id: smtpId,
     file_path: state.uploadedFilePath,
     file_type: state.uploadedFileType || "csv",
@@ -1620,6 +1927,14 @@ function collectCampaignConfig(extra = {}) {
     smtp_sender_mode: smtpSenderMode,
     smtp_from_name_mode: smtpFromNameMode,
     smtp_per_smtp: smtpPerSmtp,
+    sender_name_rotation_enabled: senderNameRotationEnabled,
+    sender_name_rotation_names: senderNameRotationNames,
+    sender_name_rotation_every: getSenderNameRotationEvery(),
+    sender_local_rotation_enabled:
+      senderLocalRotationEnabled && !!senderLocalRotationDomain,
+    sender_local_rotation_parts: senderLocalRotationParts,
+    sender_local_rotation_every: getSenderLocalRotationEvery(),
+    sender_local_rotation_domain: senderLocalRotationDomain,
     ...collectProxyConfigFromForm(),
     ...extra,
   };
@@ -2014,17 +2329,45 @@ function hasUsableFromEmail(config = {}) {
 }
 
 function formatSenderRoutingLabel(cfg = {}) {
-  const base = cfg.from_name
+  let base = cfg.from_name
     ? `${String(cfg.from_name)} <${String(cfg.from_email || "")}>`
     : String(cfg.from_email || "—");
+  const localParts = Array.isArray(cfg.sender_local_rotation_parts)
+    ? cfg.sender_local_rotation_parts.map(String).filter(Boolean)
+    : [];
+  if (
+    cfg.sender_local_rotation_enabled &&
+    localParts.length > 0 &&
+    cfg.sender_local_rotation_domain
+  ) {
+    const everyLocal = Math.max(
+      1,
+      parseInt(cfg.sender_local_rotation_every, 10) || 1,
+    );
+    base = `${localParts.length} From address(es) on @${String(cfg.sender_local_rotation_domain)} rotating every ${everyLocal} email(s)`;
+  }
   const senderMode =
     cfg.smtp_sender_mode === "per_smtp"
       ? "per SMTP from email"
       : "default from email";
-  const fromNameMode =
+  let fromNameMode =
     cfg.smtp_from_name_mode === "per_smtp"
       ? "per SMTP sender name"
       : "global sender name";
+  const names = Array.isArray(cfg.sender_name_rotation_names)
+    ? cfg.sender_name_rotation_names.map(String).filter(Boolean)
+    : [];
+  if (
+    cfg.sender_name_rotation_enabled &&
+    names.length > 0 &&
+    cfg.smtp_from_name_mode !== "per_smtp"
+  ) {
+    const every = Math.max(
+      1,
+      parseInt(cfg.sender_name_rotation_every, 10) || 1,
+    );
+    fromNameMode = `rotating ${names.length} sender name(s), every ${every} email(s)`;
+  }
   return `${base} (${senderMode}, ${fromNameMode})`;
 }
 
@@ -2081,6 +2424,16 @@ function resetNewCampaignForm() {
     smtp_sender_mode: "default",
     smtp_from_name_mode: "global",
     smtp_per_smtp: {},
+  });
+  setSenderNameRotationUiFromConfig({
+    sender_name_rotation_enabled: false,
+    sender_name_rotation_names: [],
+    sender_name_rotation_every: 1,
+  });
+  setSenderLocalRotationUiFromConfig({
+    sender_local_rotation_enabled: false,
+    sender_local_rotation_parts: [],
+    sender_local_rotation_every: 1,
   });
   resetProxyFormDefaults();
   const campPanel = document.getElementById("campaignSmtpNewPanel");
@@ -2235,6 +2588,8 @@ async function openEditCampaign(campaignId) {
   const rot = document.getElementById("rotationFrequency");
   if (rot) rot.value = String(cfg.template_rotation_frequency || 1);
   setSmtpRotationUiFromConfig(cfg);
+  setSenderNameRotationUiFromConfig(cfg);
+  setSenderLocalRotationUiFromConfig(cfg);
 
   const df = cfg.domain_filters || [];
   const domainInput = document.getElementById("domainFilterInput");
@@ -2256,6 +2611,7 @@ async function openEditCampaign(campaignId) {
         ? cfg.smtp_per_smtp
         : {},
   });
+  setSenderLocalRotationUiFromConfig(cfg);
   setSenderRoutingUiFromConfig(cfg);
   applyProxyConfigToForm(cfg);
   document.getElementById("campaignSmtpNewPanel")?.classList.add("hidden");
@@ -2616,6 +2972,7 @@ function initCampaignSmtpInline() {
     .getElementById("smtpFromNameMode")
     ?.addEventListener("change", () => {
       syncSmtpSenderOverridesDisabledState();
+      updateSenderNameRotationHint();
       refreshCampaignSendButtonState();
     });
   document
@@ -2627,6 +2984,49 @@ function initCampaignSmtpInline() {
   document
     .getElementById("smtpSenderOverridesList")
     ?.addEventListener("input", refreshCampaignSendButtonState);
+
+  const senderNameRotationEnabled = document.getElementById(
+    "senderNameRotationEnabled",
+  );
+  const senderNameRotationPanel = document.getElementById(
+    "senderNameRotationPanel",
+  );
+  if (senderNameRotationEnabled) {
+    senderNameRotationEnabled.addEventListener("change", () => {
+      if (senderNameRotationPanel) {
+        senderNameRotationPanel.classList.toggle(
+          "hidden",
+          !senderNameRotationEnabled.checked,
+        );
+      }
+      updateSenderNameRotationHint();
+      refreshCampaignSendButtonState();
+    });
+  }
+  ["fromName", "senderNameRotationNames", "senderNameRotationEvery"].forEach(
+    (id) => {
+      document.getElementById(id)?.addEventListener("input", () => {
+        updateSenderNameRotationHint();
+        refreshCampaignSendButtonState();
+      });
+    },
+  );
+
+  document
+    .getElementById("verifiedDomainFromEmail")
+    ?.addEventListener("input", refreshCampaignSendButtonState);
+  document
+    .getElementById("senderLocalRotationEnabled")
+    ?.addEventListener("change", () => {
+      updateSenderLocalRotationHint();
+      refreshCampaignSendButtonState();
+    });
+  ["senderLocalRotationParts", "senderLocalRotationEvery"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => {
+      updateSenderLocalRotationHint();
+      refreshCampaignSendButtonState();
+    });
+  });
 
   document
     .getElementById("refreshVerifiedSendersBtn")
@@ -2674,6 +3074,7 @@ function initCampaignSmtpInline() {
   renderSmtpSenderOverridesList();
   syncSmtpSenderOverridesDisabledState();
   syncCampaignFromEmailVisibility();
+  updateSenderNameRotationHint();
 }
 
 // ============================================
@@ -4962,6 +5363,62 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   });
 }
 
+function formatUploadError(err) {
+  if (!err) return "Unknown error";
+  if (typeof err === "string") return err;
+  if (err.message) return err.message;
+  if (err.kind && err.message) return `${err.kind}: ${err.message}`;
+  try {
+    return JSON.stringify(err);
+  } catch (_) {
+    return String(err);
+  }
+}
+
+async function saveRecipientUpload(file, fileType) {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) {
+    throw new Error("Backend Tauri unavailable.");
+  }
+
+  const start = await invoke("start_upload", {
+    filename: file.name,
+    fileType,
+  });
+  if (!start.success) throw new Error(start.error || "Upload start failed");
+  const uploadId = start.data && start.data.upload_id;
+  if (!uploadId) throw new Error("Upload start failed: missing upload id");
+
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const chunkSize = 64 * 1024;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.slice(offset, offset + chunkSize);
+      const res = await invoke("append_upload_chunk", {
+        uploadId,
+        bytes: Array.from(chunk),
+      });
+      if (!res.success) throw new Error(res.error || "Upload chunk failed");
+    }
+
+    const done = await invoke("finish_upload", {
+      uploadId,
+      filename: file.name,
+      fileType,
+    });
+    if (!done.success)
+      throw new Error(done.error || "Upload validation failed");
+    return done;
+  } catch (err) {
+    try {
+      await invoke("abort_upload", { uploadId });
+    } catch (_) {
+      /* best effort cleanup */
+    }
+    throw err;
+  }
+}
+
 async function handleFileUpload() {
   const input = document.getElementById("recipientsFile");
   if (!input || !input.files[0]) return;
@@ -4978,14 +5435,7 @@ async function handleFileUpload() {
   const fileType = ext === "txt" ? "txt" : "csv";
 
   try {
-    const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
-    const data = await window.__TAURI__.core.invoke("save_upload", {
-      filename: file.name,
-      fileType,
-      bytes,
-    });
-
-    if (!data.success) return alert("Upload error: " + (data.error || ""));
+    const data = await saveRecipientUpload(file, fileType);
 
     state.uploadedFilePath = data.data.filepath;
     state.uploadedFileType = data.data.file_type || fileType;
@@ -5045,7 +5495,7 @@ async function handleFileUpload() {
     updateUploadFileHint();
     refreshCampaignSendButtonState();
   } catch (err) {
-    alert("Error during upload: " + err.message);
+    alert("Error during upload: " + formatUploadError(err));
   }
 }
 
@@ -5095,6 +5545,25 @@ function validateCampaignBeforeSend(force = false) {
   }
   if (!hasUsableFromEmail(config))
     return "Choose a sender email (API list or manual entry depending on the provider).";
+  if (config.sender_local_rotation_enabled) {
+    if (!config.sender_local_rotation_domain) {
+      return "Choose a verified domain before enabling From address rotation.";
+    }
+    if (
+      !Array.isArray(config.sender_local_rotation_parts) ||
+      config.sender_local_rotation_parts.length === 0
+    ) {
+      return "Add at least one local part to rotate the From address.";
+    }
+  }
+  if (config.sender_name_rotation_enabled) {
+    if (
+      !Array.isArray(config.sender_name_rotation_names) ||
+      config.sender_name_rotation_names.length === 0
+    ) {
+      return "Add at least one display name to rotate, or disable sender name rotation.";
+    }
+  }
   if (config.smtp_sender_mode === "per_smtp") {
     const per =
       config.smtp_per_smtp && typeof config.smtp_per_smtp === "object"

@@ -1668,7 +1668,10 @@ button:disabled {
     max-width: 880px;
 }
 
-.smtp-rotation-panel {
+.smtp-rotation-panel,
+.sender-name-rotation-panel,
+.sender-local-rotation-panel,
+.verified-domain-from-wrap {
     margin: 8px 0 14px;
     padding: 12px;
     border: 1px solid rgba(148, 163, 184, 0.22);
@@ -1676,8 +1679,21 @@ button:disabled {
     background: rgba(15, 23, 42, 0.2);
 }
 
-.smtp-rotation-toggle-group {
+.smtp-rotation-toggle-group,
+.sender-name-rotation-toggle-group {
     margin-top: 4px;
+}
+
+.sender-local-rotation-fields {
+    margin-top: 12px;
+}
+
+.verified-domain-from-wrap label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 600;
 }
 
 .smtp-rotation-toggle {
