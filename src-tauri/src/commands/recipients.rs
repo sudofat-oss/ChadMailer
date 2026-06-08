@@ -64,6 +64,33 @@ pub async fn save_upload(
 }
 
 #[tauri::command]
+pub async fn import_recipient_file(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<ApiResponse<Value>, AppError> {
+    import_recipient_file_from_path(&state.paths.uploads_dir, Path::new(&path)).await
+}
+
+#[tauri::command]
+pub async fn pick_recipient_file(
+    state: State<'_, AppState>,
+) -> Result<ApiResponse<Value>, AppError> {
+    let picked = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("Choose recipients file")
+            .add_filter("Recipients", &["csv", "txt"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| AppError::Validation(format!("File dialog failed: {e}")))?;
+
+    let Some(path) = picked else {
+        return Ok(ApiResponse::err("No file selected"));
+    };
+    import_recipient_file_from_path(&state.paths.uploads_dir, &path).await
+}
+
+#[tauri::command]
 pub async fn start_upload(
     state: State<'_, AppState>,
     filename: String,
@@ -288,6 +315,53 @@ fn upload_final_path(uploads_dir: &Path, safe_name: &str, upload_id: Option<&str
         .and_then(|s| uuid::Uuid::parse_str(s).ok())
         .unwrap_or_else(uuid::Uuid::new_v4);
     uploads_dir.join(format!("{id}_{safe_name}"))
+}
+
+async fn import_recipient_file_from_path(
+    uploads_dir: &Path,
+    source_path: &Path,
+) -> Result<ApiResponse<Value>, AppError> {
+    let metadata = tokio::fs::metadata(source_path).await?;
+    if !metadata.is_file() {
+        return Ok(ApiResponse::err("Selected path is not a file"));
+    }
+    if metadata.len() == 0 {
+        return Ok(ApiResponse::err("Empty file"));
+    }
+
+    let filename = source_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("recipients.csv");
+    let ext = source_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let file_type = match ext.as_str() {
+        "txt" => "txt",
+        "csv" => "csv",
+        "xls" | "xlsx" => {
+            return Ok(ApiResponse::err(
+                "Excel files are not supported. Export your table as CSV or TXT.",
+            ))
+        }
+        _ => return Ok(ApiResponse::err("Choose a .csv or .txt file")),
+    };
+
+    validate_upload_request(filename, file_type)?;
+    storage::ensure_dir(uploads_dir).await?;
+    let safe_name = sanitize_filename(filename);
+    let dest_path = upload_final_path(uploads_dir, &safe_name, None);
+    tokio::fs::copy(source_path, &dest_path).await?;
+
+    match upload_response(&dest_path, file_type).await {
+        Ok(res) => Ok(res),
+        Err(err) => {
+            tokio::fs::remove_file(&dest_path).await.ok();
+            Err(err)
+        }
+    }
 }
 
 async fn upload_response(path: &Path, file_type: &str) -> Result<ApiResponse<Value>, AppError> {
@@ -567,6 +641,27 @@ mod tests {
             out.extend_from_slice(&unit.to_le_bytes());
         }
         out
+    }
+
+    #[tokio::test]
+    async fn import_recipient_file_from_path_copies_and_validates_csv() {
+        let source = tmp_file("import.csv", "Email,Name\nalice@example.com,Alice\n");
+        let uploads_dir =
+            std::env::temp_dir().join(format!("chadmailer-uploads-test-{}", uuid::Uuid::new_v4()));
+        let res = import_recipient_file_from_path(&uploads_dir, &source)
+            .await
+            .expect("import ok");
+        std::fs::remove_file(&source).ok();
+        std::fs::remove_dir_all(&uploads_dir).ok();
+
+        assert!(res.success);
+        let data = res.data.expect("response data");
+        assert_eq!(data["file_type"], "csv");
+        assert!(data["validation"]["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|h| h == "Email"));
     }
 
     #[tokio::test]

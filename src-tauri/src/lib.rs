@@ -52,6 +52,8 @@ pub fn run() {
             commands::health_check,
             commands::legacy_api,
             commands::recipients::save_upload,
+            commands::recipients::import_recipient_file,
+            commands::recipients::pick_recipient_file,
             commands::recipients::start_upload,
             commands::recipients::append_upload_chunk,
             commands::recipients::finish_upload,

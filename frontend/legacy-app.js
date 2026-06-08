@@ -12,6 +12,7 @@ const state = {
   uploadedFilePath: null,
   uploadedFileType: null,
   uploadedTotal: 0,
+  uploadNativeDropInit: false,
   templates: [],
   smtpConfigs: [],
   paused: false,
@@ -2510,15 +2511,43 @@ async function backToCampaignListFromForm() {
   loadCampaigns();
 }
 
+function campaignUploadUiIsVisible() {
+  const zone = document.getElementById("uploadZone");
+  if (!zone) return false;
+  const page = document.getElementById("page-campaigns");
+  return !page || !page.classList.contains("hidden");
+}
+
+async function openRecipientFilePicker() {
+  try {
+    const handled = await pickRecipientFileNative();
+    if (handled) return;
+  } catch (err) {
+    alert("Error during upload: " + formatUploadError(err));
+    return;
+  }
+  document.getElementById("recipientsFile")?.click();
+}
+
 function initUploadDragDrop() {
   const zone = document.getElementById("uploadZone");
   const input = document.getElementById("recipientsFile");
+  const placeholder = document.getElementById("uploadPlaceholder");
   if (!zone || !input) return;
 
   const stop = (e) => {
     e.preventDefault();
     e.stopPropagation();
   };
+
+  const openFromClick = (e) => {
+    stop(e);
+    void openRecipientFilePicker();
+  };
+  zone.addEventListener("click", openFromClick);
+  placeholder?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") openFromClick(e);
+  });
 
   ["dragenter", "dragover"].forEach((ev) => {
     zone.addEventListener(ev, (e) => {
@@ -2534,6 +2563,9 @@ function initUploadDragDrop() {
     });
   });
 
+  // Browser/Linux fallback: when the WebView exposes File objects, keep the
+  // existing chunked upload path. On Windows/Tauri, drops are often captured by
+  // the native webview layer and exposed through onDragDropEvent below instead.
   zone.addEventListener("drop", (e) => {
     const files = e.dataTransfer && e.dataTransfer.files;
     if (!files || !files.length) return;
@@ -2542,6 +2574,43 @@ function initUploadDragDrop() {
     input.files = dt.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
+
+  if (state.uploadNativeDropInit) return;
+  state.uploadNativeDropInit = true;
+  const getWebview = window.__TAURI__?.webview?.getCurrentWebview;
+  const getWindow = window.__TAURI__?.window?.getCurrentWindow;
+  const target =
+    typeof getWebview === "function"
+      ? getWebview()
+      : typeof getWindow === "function"
+        ? getWindow()
+        : null;
+  if (target && typeof target.onDragDropEvent === "function") {
+    target
+      .onDragDropEvent(async (event) => {
+        if (!campaignUploadUiIsVisible()) return;
+        const zone = document.getElementById("uploadZone");
+        if (event.payload?.type === "enter" || event.payload?.type === "over") {
+          zone?.classList.add("drag-active");
+          return;
+        }
+        if (event.payload?.type === "leave") {
+          zone?.classList.remove("drag-active");
+          return;
+        }
+        if (event.payload?.type === "drop") {
+          zone?.classList.remove("drag-active");
+          const path = event.payload.paths && event.payload.paths[0];
+          if (!path) return;
+          try {
+            await importRecipientFilePath(path);
+          } catch (err) {
+            alert("Error during upload: " + formatUploadError(err));
+          }
+        }
+      })
+      .catch((err) => console.warn("Native file-drop hook failed", err));
+  }
 }
 
 async function openEditCampaign(campaignId) {
@@ -5419,6 +5488,70 @@ async function saveRecipientUpload(file, fileType) {
   }
 }
 
+async function applyRecipientUploadResponse(data, fallbackFileType = "csv") {
+  if (!data || !data.success) {
+    throw new Error((data && data.error) || "Upload failed");
+  }
+  const payload = data.data || {};
+  const fileType = payload.file_type || fallbackFileType;
+  state.uploadedFilePath = payload.filepath;
+  state.uploadedFileType = fileType;
+
+  if (fileType === "txt") {
+    showCsvMappingPanel(false);
+    clearCsvCustomVarRows();
+    state.csvHeaders = [];
+    setCsvMappingWarning("");
+    const parseRes = await api("parse_recipients", "POST", {
+      file_path: state.uploadedFilePath,
+      file_type: "txt",
+    });
+    if (!parseRes.success) {
+      throw new Error("Parsing error: " + (parseRes.error || ""));
+    }
+
+    state.uploadedTotal = parseRes.data.total || 0;
+    const domains = parseRes.data.domains || {};
+    const summaryEl = document.getElementById("domainSummary");
+    if (summaryEl) {
+      const parts = Object.entries(domains)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(
+          ([domain, count]) =>
+            `${capitalize(domain)}: ${count.toLocaleString()}`,
+        );
+      summaryEl.textContent =
+        parts.join(" | ") + ` (Total: ${state.uploadedTotal.toLocaleString()})`;
+      summaryEl.classList.toggle("hidden", state.uploadedTotal === 0);
+    }
+    document
+      .getElementById("domainFilters")
+      ?.classList.toggle("hidden", state.uploadedTotal === 0);
+  } else {
+    const headers = (payload.validation && payload.validation.headers) || [];
+    state.csvHeaders = Array.isArray(headers) ? headers : [];
+    clearCsvCustomVarRows();
+    showCsvMappingPanel(state.csvHeaders.length > 0);
+    populateCsvColumnSelects();
+    const emailGuess = inferEmailColumnFromHeaders(state.csvHeaders);
+    const em = document.getElementById("csvEmailColumn");
+    if (
+      em &&
+      emailGuess &&
+      [...em.options].some((o) => o.value === emailGuess)
+    ) {
+      em.value = emailGuess;
+    } else if (em) {
+      em.value = "";
+    }
+    await reparseRecipientsWithCurrentMapping();
+  }
+
+  updateUploadFileHint();
+  refreshCampaignSendButtonState();
+}
+
 async function handleFileUpload() {
   const input = document.getElementById("recipientsFile");
   if (!input || !input.files[0]) return;
@@ -5436,67 +5569,26 @@ async function handleFileUpload() {
 
   try {
     const data = await saveRecipientUpload(file, fileType);
-
-    state.uploadedFilePath = data.data.filepath;
-    state.uploadedFileType = data.data.file_type || fileType;
-
-    if (fileType === "txt") {
-      showCsvMappingPanel(false);
-      clearCsvCustomVarRows();
-      state.csvHeaders = [];
-      setCsvMappingWarning("");
-      const parseRes = await api("parse_recipients", "POST", {
-        file_path: state.uploadedFilePath,
-        file_type: "txt",
-      });
-      if (!parseRes.success)
-        return alert("Parsing error: " + (parseRes.error || ""));
-
-      state.uploadedTotal = parseRes.data.total || 0;
-      const domains = parseRes.data.domains || {};
-      const summaryEl = document.getElementById("domainSummary");
-      if (summaryEl) {
-        const parts = Object.entries(domains)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 6)
-          .map(
-            ([domain, count]) =>
-              `${capitalize(domain)}: ${count.toLocaleString()}`,
-          );
-        summaryEl.textContent =
-          parts.join(" | ") +
-          ` (Total: ${state.uploadedTotal.toLocaleString()})`;
-        summaryEl.classList.toggle("hidden", state.uploadedTotal === 0);
-      }
-      document
-        .getElementById("domainFilters")
-        ?.classList.toggle("hidden", state.uploadedTotal === 0);
-    } else {
-      const headers =
-        (data.data.validation && data.data.validation.headers) || [];
-      state.csvHeaders = Array.isArray(headers) ? headers : [];
-      clearCsvCustomVarRows();
-      showCsvMappingPanel(state.csvHeaders.length > 0);
-      populateCsvColumnSelects();
-      const emailGuess = inferEmailColumnFromHeaders(state.csvHeaders);
-      const em = document.getElementById("csvEmailColumn");
-      if (
-        em &&
-        emailGuess &&
-        [...em.options].some((o) => o.value === emailGuess)
-      ) {
-        em.value = emailGuess;
-      } else if (em) {
-        em.value = "";
-      }
-      await reparseRecipientsWithCurrentMapping();
-    }
-
-    updateUploadFileHint();
-    refreshCampaignSendButtonState();
+    await applyRecipientUploadResponse(data, fileType);
   } catch (err) {
     alert("Error during upload: " + formatUploadError(err));
   }
+}
+
+async function importRecipientFilePath(path) {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) throw new Error("Backend Tauri unavailable.");
+  const data = await invoke("import_recipient_file", { path });
+  await applyRecipientUploadResponse(data, data?.data?.file_type || "csv");
+}
+
+async function pickRecipientFileNative() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return false;
+  const data = await invoke("pick_recipient_file");
+  if (!data.success && data.error === "No file selected") return true;
+  await applyRecipientUploadResponse(data, data?.data?.file_type || "csv");
+  return true;
 }
 
 async function handleAnalyze() {
