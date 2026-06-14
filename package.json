@@ -1,12 +1,13 @@
 {
   "name": "chadmailer",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
+    "build:appimage": "NO_STRIP=true tauri build --bundles appimage",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {

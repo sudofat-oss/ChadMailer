@@ -431,11 +431,32 @@ pub async fn send_test_email(
     };
 
     match crate::mailer::send_email(&cfg, &message).await {
-        Ok(result) => Ok(ApiResponse::ok(json!({
-            "provider": result.provider,
-            "message_id": result.message_id,
-            "message": format!("Email sent to {to}"),
-        }))),
+        Ok(result) => {
+            let provider_status = result
+                .raw
+                .as_ref()
+                .and_then(|raw| raw.get("status"))
+                .and_then(Value::as_u64);
+            let is_sendgrid = result.provider.eq_ignore_ascii_case("sendgrid");
+            let delivery_status = if is_sendgrid && provider_status == Some(202) {
+                "accepted"
+            } else {
+                "sent"
+            };
+            let message = if delivery_status == "accepted" {
+                format!("Email accepted by SendGrid for {to} (queued; not proof of delivery)")
+            } else {
+                format!("Email sent to {to}")
+            };
+            Ok(ApiResponse::ok(json!({
+                "provider": result.provider,
+                "provider_status": provider_status,
+                "delivery_status": delivery_status,
+                "message_id": result.message_id,
+                "message": message,
+                "raw": result.raw,
+            })))
+        }
         Err(e) => Ok(ApiResponse::err(e.to_string())),
     }
 }
@@ -468,6 +489,11 @@ async fn save_config(state: &State<'_, AppState>, data: Value) -> AppResult<ApiR
     }
 
     normalize_provider_defaults(&mut incoming);
+    if contains_masked_secret(&incoming) {
+        return Ok(ApiResponse::err(
+            "Masked secret received. Paste the real API key/password before saving.".to_string(),
+        ));
+    }
     if let Err(message) = validate_provider_config(&incoming, false) {
         return Ok(ApiResponse::err(message));
     }
@@ -632,9 +658,20 @@ fn mask_secrets_for_ui(config: &mut ProviderConfig) {
 
 fn preserve_secret_if_masked(incoming: &mut String, existing: &str) {
     let v = incoming.trim();
-    if v.is_empty() || v == "***" {
+    if v.is_empty() || is_masked_secret(v) {
         *incoming = existing.to_string();
     }
+}
+
+fn contains_masked_secret(config: &ProviderConfig) -> bool {
+    is_masked_secret(&config.api_key)
+        || is_masked_secret(&config.password)
+        || is_masked_secret(&config.secret_key)
+}
+
+fn is_masked_secret(value: &str) -> bool {
+    let v = value.trim();
+    !v.is_empty() && v.chars().all(|c| matches!(c, '*' | '•' | '●'))
 }
 
 fn is_empty_json_number_or_string(value: &Value) -> bool {

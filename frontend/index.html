@@ -1746,7 +1746,7 @@
                                 <button
                                     type="button"
                                     class="back-btn btn-with-icon"
-                                    onclick="backToCampaignList()"
+                                    data-detail-action="back"
                                 >
                                     <span
                                         data-ty-icon="arrow-left"
@@ -3347,6 +3347,40 @@
                     </button>
                     <button class="btn-danger" id="confirmForceSend">
                         Confirm send
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal confirmation delete campaign -->
+        <div
+            class="modal-overlay hidden"
+            id="deleteCampaignModal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deleteCampaignTitle"
+            aria-hidden="true"
+        >
+            <div class="modal">
+                <h3 id="deleteCampaignTitle">Delete campaign?</h3>
+                <p id="deleteCampaignText">
+                    This will permanently delete the campaign and its logs. This
+                    action cannot be undone.
+                </p>
+                <div class="modal-actions">
+                    <button
+                        type="button"
+                        class="btn-secondary"
+                        id="cancelDeleteCampaign"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-danger"
+                        id="confirmDeleteCampaign"
+                    >
+                        Delete campaign
                     </button>
                 </div>
             </div>

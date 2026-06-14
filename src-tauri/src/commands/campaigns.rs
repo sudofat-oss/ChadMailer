@@ -136,6 +136,7 @@ pub async fn campaign_get_update_delete(
         }
         "PUT" => campaign_update(state, id, data).await,
         "DELETE" => {
+            let _ = state.engine.stop(id).await;
             let path = state.paths.campaigns_dir.join(format!("{}.json", id));
             storage::remove_file_if_exists(&path).await?;
             let log_path = state.paths.campaigns_dir.join(format!("{}.log.jsonl", id));

@@ -8,6 +8,8 @@ const state = {
   campaignPollTimer: null,
   currentCampaignId: null,
   editingCampaignId: null,
+  resumeCampaignAfterEdit: false,
+  editReturnToMonitoringId: null,
   scoreData: null,
   uploadedFilePath: null,
   uploadedFileType: null,
@@ -15,6 +17,7 @@ const state = {
   uploadNativeDropInit: false,
   templates: [],
   smtpConfigs: [],
+  campaignsCache: [],
   paused: false,
   /** Headers of the last imported CSV (exact column names) */
   csvHeaders: [],
@@ -26,6 +29,7 @@ const state = {
   templatePreviewUsesRealMerge: false,
   /** Pre-send summary */
   sendSummaryPending: null,
+  deleteCampaignPendingId: null,
   configCacheForDetailEta: null,
   completionWatchTimer: null,
   completionWatchCampaignId: null,
@@ -178,6 +182,73 @@ function removeSmtpInspectCacheEntry(smtpId) {
   writeInspectCacheMap(m);
 }
 
+function formatInspectScalar(value) {
+  if (value == null || value === "") return "—";
+  if (typeof value === "number") return value.toLocaleString("en-US");
+  return String(value);
+}
+
+function renderSendgridInspectSummary(inspectObj) {
+  if (
+    !inspectObj ||
+    String(inspectObj.provider || "").toLowerCase() !== "sendgrid"
+  ) {
+    return "";
+  }
+  const profile = inspectObj.profile || {};
+  const quota = inspectObj.quota_summary || {};
+  const credits = inspectObj.credits || {};
+  const creditsOk = !!credits.ok;
+  const identitySummary = inspectObj.identity_summary || {};
+  const identities = Array.isArray(identitySummary.identities)
+    ? identitySummary.identities
+    : [];
+  const sources = identitySummary.sources || {};
+  const verifiedCount = Number(identitySummary.verified_count || 0);
+  const unverifiedCount = Number(identitySummary.unverified_count || 0);
+  const sourceBadges = [
+    ["Single Sender", sources.verified_senders],
+    ["Sender identities", sources.legacy_senders],
+    ["Authenticated domains", sources.authenticated_domains],
+  ]
+    .map(([label, ok]) => `${ok ? "✓" : "×"} ${label}`)
+    .join(" · ");
+
+  const quotaLine = creditsOk
+    ? `Remaining: <strong>${escHtml(formatInspectScalar(quota.remaining))}</strong> · Used: <strong>${escHtml(formatInspectScalar(quota.used))}</strong> · Total: <strong>${escHtml(formatInspectScalar(quota.total))}</strong>`
+    : `Quota endpoint unavailable${credits.error ? `: ${escHtml(String(credits.error))}` : ""}`;
+
+  const identitiesHtml = identities.length
+    ? `<ul class="header-list" style="margin-top:.5rem;">${identities
+        .slice(0, 12)
+        .map((i) => {
+          const label = i.label || i.email || i.domain || "identity";
+          const verified = !!i.verified;
+          const status = verified ? "verified" : "unverified";
+          const source = i.source
+            ? ` <span class="label-hint">(${escHtml(String(i.source))}, ${status})</span>`
+            : ` <span class="label-hint">(${status})</span>`;
+          return `<li>${escHtml(String(label))}${source}</li>`;
+        })
+        .join(
+          "",
+        )}${identities.length > 12 ? `<li>… ${identities.length - 12} more</li>` : ""}</ul>`
+    : '<p class="field-hint">No SendGrid sender record or authenticated domain was returned by the API. Choose “Custom address…” in the test email form if you know the domain is authorized.</p>';
+
+  return `
+    <div class="highlight-box" style="margin-bottom:1rem;">
+      <strong>SendGrid API summary</strong>
+      <div style="margin-top:.6rem;display:grid;gap:.35rem;">
+        <div><strong>Region used:</strong> ${escHtml(inspectObj.region || "—")} <span class="label-hint">${escHtml(inspectObj.base_used || "")}</span></div>
+        <div><strong>Account:</strong> ${escHtml(profile.username || profile.email || profile.first_name || "—")}</div>
+        <div><strong>Quota / credits:</strong> ${quotaLine}</div>
+        <div><strong>Identities:</strong> ${escHtml(String(identities.length || 0))} detected <span class="label-hint">(${escHtml(String(verifiedCount))} verified, ${escHtml(String(unverifiedCount))} unverified)</span></div>
+        <div><strong>Endpoints:</strong> ${escHtml(sourceBadges)}</div>
+      </div>
+      ${identitiesHtml}
+    </div>`;
+}
+
 function buildInspectPreHtml(fetchedAt, inspectObj) {
   const t =
     fetchedAt && String(fetchedAt).trim()
@@ -193,6 +264,7 @@ function buildInspectPreHtml(fetchedAt, inspectObj) {
       : "";
   return (
     t +
+    renderSendgridInspectSummary(inspectObj) +
     '<pre class="inspect-json-pre" tabindex="0">' +
     escHtml(JSON.stringify(inspectObj, null, 2)) +
     "</pre>"
@@ -2381,11 +2453,17 @@ function setCampaignFormEditMode(isEdit) {
   if (title) title.textContent = isEdit ? "Edit campaign" : "New campaign";
   if (sub) {
     sub.textContent = isEdit
-      ? "Adjust the list, sender, SMTP or templates, save, then start sending to apply the changes."
+      ? state.resumeCampaignAfterEdit
+        ? "Campaign is paused. Adjust settings, then save to resume from the current progress with the new configuration."
+        : "Adjust the list, sender, SMTP or templates, save, then start sending to apply the changes."
       : "Import a list, choose your templates, configure the sender and SMTP, then analyze or send.";
   }
   if (sendBtn) {
-    const label = isEdit ? "Save & start sending" : "Start sending";
+    const label = isEdit
+      ? state.resumeCampaignAfterEdit
+        ? "Save & resume"
+        : "Save & start sending"
+      : "Start sending";
     sendBtn.innerHTML =
       tyI("send", 20) +
       '<span class="ty-btn-txt">' +
@@ -2396,6 +2474,8 @@ function setCampaignFormEditMode(isEdit) {
 
 function resetNewCampaignForm() {
   state.editingCampaignId = null;
+  state.resumeCampaignAfterEdit = false;
+  state.editReturnToMonitoringId = null;
   setCampaignFormEditMode(false);
   const ids = ["campaignName", "fromName", "domainFilterInput"];
   ids.forEach((id) => {
@@ -2489,6 +2569,7 @@ function resetNewCampaignForm() {
 }
 
 async function backToCampaignListFromForm() {
+  const returnToMonitoringId = state.editReturnToMonitoringId;
   if (state.editingCampaignId) {
     const nameEl = document.getElementById("campaignName");
     const name = nameEl ? nameEl.value.trim() : "Campaign";
@@ -2505,10 +2586,14 @@ async function backToCampaignListFromForm() {
   }
 
   document.getElementById("campaignForm").classList.add("hidden");
-  document.getElementById("campaignsList").classList.remove("hidden");
-  document.getElementById("newCampaignBtn").classList.remove("hidden");
   resetNewCampaignForm();
-  loadCampaigns();
+  if (returnToMonitoringId) {
+    showCampaignDetail(returnToMonitoringId);
+  } else {
+    document.getElementById("campaignsList").classList.remove("hidden");
+    document.getElementById("newCampaignBtn").classList.remove("hidden");
+    loadCampaigns();
+  }
 }
 
 function campaignUploadUiIsVisible() {
@@ -2613,20 +2698,37 @@ function initUploadDragDrop() {
   }
 }
 
-async function openEditCampaign(campaignId) {
+async function openEditCampaign(campaignId, options = {}) {
   const res = await api("campaign&id=" + encodeURIComponent(campaignId));
   if (!res.success || !res.data) {
     alert("Unable to load campaign.");
     return;
   }
   const c = res.data;
-  if (c.status === "running") {
-    alert("Cannot edit a running campaign. Pause or stop it first.");
-    return;
+  let campaignStatus = c.status;
+  const shouldResumeAfterEdit = !!options.resumeAfterEdit;
+  if (campaignStatus === "running") {
+    if (!options.autoPause) {
+      alert("Cannot edit a running campaign. Pause it first, then edit.");
+      return;
+    }
+    const pauseRes = await api("pause", "POST", { campaign_id: campaignId });
+    if (!pauseRes.success) {
+      alert("Pause before edit failed: " + (pauseRes.error || ""));
+      return;
+    }
+    state.paused = true;
+    campaignStatus = "paused";
+    c.status = "paused";
   }
 
   state.scoreData = null;
   state.editingCampaignId = campaignId;
+  state.resumeCampaignAfterEdit =
+    shouldResumeAfterEdit || campaignStatus === "paused";
+  state.editReturnToMonitoringId = state.resumeCampaignAfterEdit
+    ? campaignId
+    : null;
   setCampaignFormEditMode(true);
 
   const list = document.getElementById("campaignsList");
@@ -2859,7 +2961,11 @@ function clearCampSmtpForm() {
   const prov = document.getElementById("campSmtpProvider");
   if (prov) {
     prov.value = "brevo";
+    prov.selectedIndex = [...prov.options].findIndex(
+      (o) => o.value === "brevo",
+    );
     toggleCampSmtpFields("brevo");
+    syncCustomSelect(prov);
   }
   const tr = document.getElementById("campSmtpTestResult");
   if (tr) {
@@ -2874,8 +2980,15 @@ function toggleCampaignSmtpNewPanel(show) {
   if (show) {
     clearCampSmtpForm();
     const prov = document.getElementById("campSmtpProvider");
-    if (prov) toggleCampSmtpFields(prov.value);
+    if (prov) {
+      toggleCampSmtpFields(prov.value);
+      syncCustomSelect(prov);
+    }
     if (typeof tyHydrateIcons === "function") tyHydrateIcons(p);
+    setTimeout(() => {
+      const first = document.getElementById("campSmtpName");
+      if (first) first.focus({ preventScroll: true });
+    }, 80);
   }
 }
 
@@ -3391,6 +3504,42 @@ async function initDashboard() {
 function goToMonitoring(campaignId) {
   showSection("campaigns");
   showCampaignDetail(campaignId);
+}
+
+function campaignIsActiveStatus(status) {
+  return ["pending", "running", "paused"].includes(String(status || ""));
+}
+
+function bindCampaignDetailInteractions() {
+  const detail = document.getElementById("campaignDetail");
+  if (!detail || detail.dataset.boundActions === "1") return;
+  detail.dataset.boundActions = "1";
+  detail.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-detail-action]");
+    if (!btn || !detail.contains(btn)) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const action = btn.getAttribute("data-detail-action");
+    const campaignId =
+      btn.getAttribute("data-campaign-id") || state.currentCampaignId;
+    if (action === "back") {
+      backToCampaignList();
+    } else if (action === "pause") {
+      void handlePause();
+    } else if (action === "stop") {
+      void handleStop();
+    } else if (action === "edit" && campaignId) {
+      void openEditCampaign(campaignId, { resumeAfterEdit: state.paused });
+    } else if (action === "pause-edit" && campaignId) {
+      void openEditCampaign(campaignId, {
+        autoPause: true,
+        resumeAfterEdit: true,
+      });
+    } else if (action === "relaunch" && campaignId) {
+      void relaunchCampaign(campaignId);
+    }
+  });
 }
 
 // ============================================
@@ -5118,6 +5267,33 @@ async function deleteTemplate(id) {
 async function initCampaigns() {
   await loadCampaigns();
   initProxyFormWiring();
+  bindCampaignDetailInteractions();
+
+  const campaignsList = document.getElementById("campaignsList");
+  if (campaignsList && campaignsList.dataset.boundCampaignActions !== "1") {
+    campaignsList.dataset.boundCampaignActions = "1";
+    campaignsList.addEventListener("click", (e) => {
+      const actionBtn = e.target.closest("[data-campaign-action]");
+      const card = e.target.closest(".campaign-card[data-campaign-id]");
+      const campaignId =
+        (actionBtn && actionBtn.getAttribute("data-campaign-id")) ||
+        (card && card.getAttribute("data-campaign-id"));
+      if (!campaignId) return;
+
+      if (actionBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const action = actionBtn.getAttribute("data-campaign-action");
+        if (action === "monitor") showCampaignDetail(campaignId);
+        else if (action === "edit") openEditCampaign(campaignId);
+        else if (action === "relaunch") relaunchCampaign(campaignId);
+        else if (action === "delete") deleteCampaignCard(campaignId);
+        return;
+      }
+
+      showCampaignDetail(campaignId);
+    });
+  }
 
   const newBtn = document.getElementById("newCampaignBtn");
   if (newBtn) {
@@ -5226,13 +5402,27 @@ async function initCampaigns() {
     });
   }
 
+  document
+    .getElementById("cancelDeleteCampaign")
+    ?.addEventListener("click", closeDeleteCampaignModal);
+  document
+    .getElementById("deleteCampaignModal")
+    ?.addEventListener("click", (e) => {
+      if (e.target && e.target.id === "deleteCampaignModal")
+        closeDeleteCampaignModal();
+    });
+  document
+    .getElementById("confirmDeleteCampaign")
+    ?.addEventListener("click", confirmDeleteCampaign);
+
   initCsvMappingUI();
 }
 
 async function loadCampaigns() {
   const res = await api("campaigns");
   if (!res.success) return;
-  renderCampaignsList(res.data || []);
+  state.campaignsCache = res.data || [];
+  renderCampaignsList(state.campaignsCache);
 }
 
 function renderCampaignsList(campaigns) {
@@ -5295,7 +5485,7 @@ function renderCampaignsList(campaigns) {
           : 0;
       const id = escAttr(c.id);
       return `
-      <div class="campaign-card" onclick="showCampaignDetail('${id}')">
+      <div class="campaign-card" data-campaign-id="${id}" role="button" tabindex="0">
         <div class="campaign-card-top">
           <div class="campaign-card-info">
             <span class="campaign-status-badge ${sm.cls}">${sm.icon ? tyI(sm.icon, 14) : ""}<span>${escHtml(sm.text)}</span></span>
@@ -5326,18 +5516,18 @@ function renderCampaignsList(campaigns) {
             }
           </div>
         </div>
-        <div class="campaign-card-footer" onclick="event.stopPropagation()">
-          <button type="button" class="btn btn-sm btn-with-icon" onclick="showCampaignDetail('${id}')">
-            ${c.status === "running" ? tyI("radio", 16) + " Monitoring live" : tyI("list", 16) + " View logs"}
+        <div class="campaign-card-footer">
+          <button type="button" class="btn btn-sm btn-with-icon" data-campaign-action="monitor" data-campaign-id="${id}">
+            ${campaignIsActiveStatus(c.status) ? tyI("radio", 16) + " Monitoring" : tyI("list", 16) + " View logs"}
           </button>
           ${
             c.status !== "running"
-              ? `<button type="button" class="btn btn-sm btn-primary btn-with-icon" onclick="event.stopPropagation(); openEditCampaign('${id}')">${tyI("pencil", 15)} Edit</button>
-          <button type="button" class="btn btn-sm btn-with-icon" onclick="event.stopPropagation(); relaunchCampaign('${id}')">${tyI("refresh-cw", 15)} Relaunch</button>`
+              ? `<button type="button" class="btn btn-sm btn-primary btn-with-icon" data-campaign-action="edit" data-campaign-id="${id}">${tyI("pencil", 15)} Edit</button>
+          <button type="button" class="btn btn-sm btn-with-icon" data-campaign-action="relaunch" data-campaign-id="${id}">${tyI("refresh-cw", 15)} Relaunch</button>`
               : ""
           }
           <span class="btn-spacer"></span>
-          <button type="button" class="btn btn-sm btn-danger btn-with-icon" title="Delete" aria-label="Delete campaign" onclick="deleteCampaignCard('${id}')">${tyI("trash", 16)}</button>
+          <button type="button" class="btn btn-sm btn-danger btn-with-icon" title="Delete" aria-label="Delete campaign" data-campaign-action="delete" data-campaign-id="${id}">${tyI("trash", 16)}</button>
         </div>
       </div>
     `;
@@ -5873,6 +6063,9 @@ async function confirmSendSummaryAndRun() {
   closeSendSummaryModal();
 
   let campaignId;
+  const shouldResumeAfterEdit = !!(
+    state.editingCampaignId && state.resumeCampaignAfterEdit
+  );
   if (state.editingCampaignId) {
     const putRes = await api(
       "campaign&id=" + encodeURIComponent(state.editingCampaignId),
@@ -5891,12 +6084,28 @@ async function confirmSendSummaryAndRun() {
   }
 
   state.currentCampaignId = campaignId;
-  const sendRes = await api("send", "POST", { campaign_id: campaignId });
-  if (!sendRes.success) return alert("Send error: " + (sendRes.error || ""));
+  let sendRes;
+  if (shouldResumeAfterEdit) {
+    const stopRes = await api("stop", "POST", { campaign_id: campaignId });
+    if (!stopRes.success)
+      return alert("Pause/apply error: " + (stopRes.error || ""));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    sendRes = await api("send", "POST", { campaign_id: campaignId });
+  } else {
+    sendRes = await api("send", "POST", { campaign_id: campaignId });
+  }
+  if (!sendRes.success)
+    return alert(
+      (shouldResumeAfterEdit ? "Resume with changes" : "Send") +
+        " error: " +
+        (sendRes.error || ""),
+    );
 
   startCampaignCompletionWatch(campaignId, name);
 
   state.editingCampaignId = null;
+  state.resumeCampaignAfterEdit = false;
+  state.editReturnToMonitoringId = null;
   setCampaignFormEditMode(false);
   document.getElementById("campaignForm")?.classList.add("hidden");
   showCampaignDetail(campaignId);
@@ -5937,6 +6146,7 @@ async function showCampaignDetail(campaignId) {
 
   const campaign = res.data;
   const stats = campaign.stats || {};
+  state.paused = campaign.status === "paused";
   state.configCacheForDetailEta = campaign.config || {};
 
   // Header
@@ -5944,7 +6154,9 @@ async function showCampaignDetail(campaignId) {
   if (nameEl) nameEl.textContent = campaign.name || "Campaign";
 
   const statusMeta = {
+    pending: { icon: "clock", text: "Starting", color: "#64748b" },
     running: { icon: "activity", text: "Running", color: "#22c55e" },
+    paused: { icon: "pause", text: "Paused", color: "#f59e0b" },
     completed: { icon: "check-circle", text: "Completed", color: "#64748b" },
     done: { icon: "check-circle", text: "Completed", color: "#64748b" },
     failed: { icon: "x-circle", text: "Failed", color: "#ef4444" },
@@ -5954,7 +6166,6 @@ async function showCampaignDetail(campaignId) {
       text: "Interrupted",
       color: "#f59e0b",
     },
-    pending: { icon: "clock", text: "Pending", color: "#64748b" },
   };
   const sm = statusMeta[campaign.status] || {
     icon: null,
@@ -5987,7 +6198,13 @@ async function showCampaignDetail(campaignId) {
   const editHint = document.getElementById("detailEditHint");
   if (editHint) {
     if (campaign.status === "running") {
-      editHint.classList.add("hidden");
+      editHint.textContent =
+        'Use "Pause" to temporarily stop sending, or "Pause & edit" to modify settings then resume from the current progress.';
+      editHint.classList.remove("hidden");
+    } else if (campaign.status === "paused") {
+      editHint.textContent =
+        'Campaign is paused. You can edit settings, then "Save & resume" to continue from the current progress.';
+      editHint.classList.remove("hidden");
     } else {
       editHint.textContent =
         'To change the list, sender or SMTP before a new send, use "Edit campaign".';
@@ -6001,21 +6218,23 @@ async function showCampaignDetail(campaignId) {
   const actionsEl = document.getElementById("detailActions");
   const cid = escAttr(campaignId);
   if (actionsEl) {
-    if (campaign.status === "running") {
+    if (campaignIsActiveStatus(campaign.status)) {
+      const pauseIcon = campaign.status === "paused" ? "play" : "pause";
+      const pauseText =
+        campaign.status === "paused" ? "Resume sending" : "Pause only";
+      const editButton =
+        campaign.status === "paused"
+          ? `<button type="button" class="btn-primary btn-with-icon" data-detail-action="edit" data-campaign-id="${cid}">${tyI("pencil", 16)} Edit & resume</button>`
+          : `<button type="button" class="btn-secondary btn-with-icon" data-detail-action="pause-edit" data-campaign-id="${cid}">${tyI("pencil", 16)} Pause + edit</button>`;
       actionsEl.innerHTML = `
-        <button type="button" class="btn-warning btn-with-icon" id="detailPauseBtn">${tyI("pause", 16)} Pause</button>
-        <button type="button" class="btn-danger btn-with-icon" id="detailStopBtn">${tyI("square", 16)} Stop</button>
+        <button type="button" class="btn-warning btn-with-icon" id="detailPauseBtn" data-detail-action="pause" data-campaign-id="${cid}">${tyI(pauseIcon, 16)} ${pauseText}</button>
+        ${editButton}
+        <button type="button" class="btn-danger btn-with-icon" id="detailStopBtn" data-detail-action="stop" data-campaign-id="${cid}">${tyI("square", 16)} Stop</button>
       `;
-      document
-        .getElementById("detailPauseBtn")
-        .addEventListener("click", handlePause);
-      document
-        .getElementById("detailStopBtn")
-        .addEventListener("click", handleStop);
     } else {
       actionsEl.innerHTML = `
-        <button type="button" class="btn-primary btn-with-icon" onclick="openEditCampaign('${cid}')">${tyI("pencil", 16)} Edit campaign</button>
-        <button type="button" class="btn-secondary btn-with-icon" onclick="relaunchCampaign('${cid}')">${tyI("refresh-cw", 16)} Relaunch as is</button>
+        <button type="button" class="btn-primary btn-with-icon" data-detail-action="edit" data-campaign-id="${cid}">${tyI("pencil", 16)} Edit campaign</button>
+        <button type="button" class="btn-secondary btn-with-icon" data-detail-action="relaunch" data-campaign-id="${cid}">${tyI("refresh-cw", 16)} Relaunch as is</button>
       `;
     }
   }
@@ -6023,9 +6242,11 @@ async function showCampaignDetail(campaignId) {
   // Logs indicator
   const indicator = document.getElementById("detailLogsIndicator");
   if (indicator) {
-    if (campaign.status === "running") {
-      indicator.innerHTML = tyI("activity", 12) + " <span>live</span>";
-      indicator.style.color = "#22c55e";
+    if (campaignIsActiveStatus(campaign.status)) {
+      const label = campaign.status === "paused" ? "paused" : "live";
+      indicator.innerHTML = tyI("activity", 12) + ` <span>${label}</span>`;
+      indicator.style.color =
+        campaign.status === "paused" ? "#f59e0b" : "#22c55e";
     } else {
       indicator.innerHTML =
         tyI("check", 12) + " <span>" + (stats.sent || 0) + " sent</span>";
@@ -6041,7 +6262,7 @@ async function showCampaignDetail(campaignId) {
     : (campaign.logs || []).length;
   if (logsContainer) {
     const logs = campaign.logs || [];
-    if (logs.length === 0 && campaign.status !== "running") {
+    if (logs.length === 0 && !campaignIsActiveStatus(campaign.status)) {
       logsContainer.innerHTML =
         '<div class="log-line info" style="color:#64748b">No logs available for this campaign.</div>';
     } else {
@@ -6067,7 +6288,7 @@ async function showCampaignDetail(campaignId) {
   // Live updates come from the Tauri event bus (progress + per-line logs).
   // Only fall back to HTTP polling when those events are unavailable, so we
   // never append the same log line twice.
-  if (campaign.status === "running" || campaign.status === "pending") {
+  if (campaignIsActiveStatus(campaign.status)) {
     state.campaignLogCursor = logsTotal;
     if (!state.liveEventsActive) {
       startCampaignPolling(campaignId, logsTotal);
@@ -6109,32 +6330,82 @@ async function relaunchCampaign(campaignId) {
   showCampaignDetail(campaignId);
 }
 
+function closeDeleteCampaignModal() {
+  state.deleteCampaignPendingId = null;
+  const modal = document.getElementById("deleteCampaignModal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+  }
+}
+
 async function deleteCampaignCard(campaignId) {
-  if (!confirm("Permanently delete this campaign?")) return;
-  const res = await api("campaign&id=" + campaignId, "DELETE");
-  if (!res.success) return alert("Error while deleting.");
-  await loadCampaigns();
+  if (!campaignId) return;
+  state.deleteCampaignPendingId = campaignId;
+  const campaign = (state.campaignsCache || []).find(
+    (c) => String(c.id) === String(campaignId),
+  );
+  const text = document.getElementById("deleteCampaignText");
+  if (text) {
+    text.textContent = `This will permanently delete “${campaign?.name || campaignId}” and its logs. This action cannot be undone.`;
+  }
+  const modal = document.getElementById("deleteCampaignModal");
+  if (modal) {
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+  }
+}
+
+async function confirmDeleteCampaign() {
+  const campaignId = state.deleteCampaignPendingId;
+  if (!campaignId) return closeDeleteCampaignModal();
+  const btn = document.getElementById("confirmDeleteCampaign");
+  if (btn) btn.disabled = true;
+  const res = await api(
+    "campaign&id=" + encodeURIComponent(campaignId),
+    "DELETE",
+  );
+  if (btn) btn.disabled = false;
+  if (!res.success) return alert("Error while deleting: " + (res.error || ""));
+  const wasCurrent =
+    String(state.currentCampaignId || "") === String(campaignId);
+  closeDeleteCampaignModal();
+  if (wasCurrent) backToCampaignList();
+  else await loadCampaigns();
 }
 
 async function handlePause() {
   if (!state.currentCampaignId) return;
+  const campaignId = state.currentCampaignId;
   const pauseBtn = document.getElementById("detailPauseBtn");
+  if (pauseBtn) pauseBtn.disabled = true;
 
-  if (!state.paused) {
-    await api("pause", "POST", { campaign_id: state.currentCampaignId });
-    state.paused = true;
-    if (pauseBtn) pauseBtn.innerHTML = tyI("play", 16) + " Resume";
-  } else {
-    await api("resume", "POST", { campaign_id: state.currentCampaignId });
-    state.paused = false;
-    if (pauseBtn) pauseBtn.innerHTML = tyI("pause", 16) + " Pause";
+  const action = state.paused ? "resume" : "pause";
+  const res = await api(action, "POST", { campaign_id: campaignId });
+  if (!res.success) {
+    if (pauseBtn) pauseBtn.disabled = false;
+    return alert(
+      (state.paused ? "Resume" : "Pause") + " error: " + (res.error || ""),
+    );
   }
+
+  state.paused = !state.paused;
+  await showCampaignDetail(campaignId);
 }
 
 async function handleStop() {
   if (!state.currentCampaignId) return;
   if (!confirm("Permanently stop the campaign?")) return;
-  await api("stop", "POST", { campaign_id: state.currentCampaignId });
+  const campaignId = state.currentCampaignId;
+  const stopBtn = document.getElementById("detailStopBtn");
+  if (stopBtn) stopBtn.disabled = true;
+
+  const res = await api("stop", "POST", { campaign_id: campaignId });
+  if (!res.success) {
+    if (stopBtn) stopBtn.disabled = false;
+    return alert("Stop error: " + (res.error || ""));
+  }
+
   // The `campaign://stopped` event finalizes the UI when the bus is live.
   // Otherwise resume polling from the current cursor (no re-streaming).
   if (!state.liveEventsActive) {
@@ -6142,8 +6413,9 @@ async function handleStop() {
       typeof state.campaignLogCursor === "number"
         ? state.campaignLogCursor
         : document.querySelectorAll("#detailLogsContainer .log-line").length;
-    startCampaignPolling(state.currentCampaignId, cursor);
+    startCampaignPolling(campaignId, cursor);
   }
+  await showCampaignDetail(campaignId);
 }
 
 // ============================================
@@ -6383,9 +6655,14 @@ let testingMailFromIdentityMeta = new Map();
 
 /** Providers that allow sending from an arbitrary From address (in addition
  *  to any detected identity): SMTP servers, Office365 and Mailgun (any
- *  address on a verified domain). Brevo / SendGrid / SES / Mandrill / Postmark
- *  enforce verified senders, so the dropdown is authoritative there. */
-const CUSTOM_FROM_PROVIDERS = new Set(["smtp", "office365", "mailgun"]);
+ *  address on a verified domain). SendGrid can also use authenticated domains;
+ *  if the API key cannot list them, we still allow a manual From address. */
+const CUSTOM_FROM_PROVIDERS = new Set([
+  "smtp",
+  "office365",
+  "mailgun",
+  "sendgrid",
+]);
 const CUSTOM_FROM_OPTION = "__custom__";
 
 /** Show/hide the manual From input and sync the display name based on the
@@ -6529,6 +6806,8 @@ async function refreshTestingMailFromIdentities() {
       name,
       label,
       domain: (s.domain && String(s.domain).trim()) || "",
+      verified: s.verified !== false,
+      source: (s.source && String(s.source).trim()) || "",
     });
     optionsHtml += `<option value="${escAttr(email)}">${escHtml(label)}</option>`;
   });
@@ -6561,11 +6840,11 @@ async function refreshTestingMailFromIdentities() {
   if (hintEl) {
     if (loadError && !hasIdentities) {
       hintEl.textContent = allowCustom
-        ? `Could not load identities (${loadError}) — type a custom From address.`
+        ? `Could not load identities (${loadError}) — type a custom From address on an authenticated domain.`
         : "Unable to load identities: " + loadError;
     } else if (!hasIdentities) {
       hintEl.textContent = allowCustom
-        ? "No identity returned by the API — type the From address to use."
+        ? "No identity returned by the API — type a From address on an authenticated domain."
         : "No verified identity for this account. Create a sender identity in Brevo, SendGrid (Sender Authentication) or SES.";
     } else if (allowCustom) {
       hintEl.textContent =
@@ -6881,6 +7160,16 @@ function initTesting() {
         return alert(
           "SMTP configuration, recipient and sender (From) are required.",
         );
+      if (
+        prov === "sendgrid" &&
+        selMeta &&
+        selMeta.verified === false &&
+        !confirm(
+          "This SendGrid sender identity is marked as UNVERIFIED by the API. SendGrid may accept the API call but then drop/suppress the email. Continue anyway?",
+        )
+      ) {
+        return;
+      }
       const mode = document.getElementById("testingMailContentMode")?.value;
       const payload = {
         smtp_config_id: smtpId,
@@ -6910,7 +7199,13 @@ function initTesting() {
       try {
         const res = await api("send_test_email", "POST", payload);
         if (res.success) {
-          updateTestingMailLog(pendingLine, to, "ok");
+          const data = res.data || {};
+          if (String(data.provider || "").toLowerCase() === "sendgrid") {
+            updateTestingMailLog(pendingLine, to, "accepted", null, data);
+            scheduleSendgridActivityCheck(smtpId, to, pendingLine, data);
+          } else {
+            updateTestingMailLog(pendingLine, to, "ok", null, data);
+          }
         } else {
           updateTestingMailLog(
             pendingLine,
@@ -6960,9 +7255,9 @@ function appendTestingMailLog(container, to, state) {
   return line;
 }
 
-function updateTestingMailLog(line, to, state, errorMessage) {
+function updateTestingMailLog(line, to, state, errorMessage, data = null) {
   if (!line) return;
-  line.classList.remove("ok", "failed", "info", "retry");
+  line.classList.remove("ok", "failed", "info", "retry", "accepted");
   const msg = line.querySelector(".log-msg");
   if (!msg) return;
   msg.innerHTML = "";
@@ -6973,6 +7268,37 @@ function updateTestingMailLog(line, to, state, errorMessage) {
   if (state === "ok") {
     line.classList.add("ok");
     msg.append("Email sent to ", target);
+    if (data && data.message_id) msg.append(" — id: " + data.message_id);
+  } else if (state === "accepted") {
+    line.classList.add("info", "accepted");
+    msg.append(
+      "Accepted by SendGrid for ",
+      target,
+      " (queued, not delivered yet)",
+    );
+    if (data && data.message_id)
+      msg.append(" — x-message-id: " + data.message_id);
+    if (errorMessage) msg.append(" — " + errorMessage);
+  } else if (state === "delivery") {
+    const activity = data || {};
+    const status = String(activity.status || "").toLowerCase();
+    if (status === "delivered") line.classList.add("ok");
+    else if (
+      status === "not_delivered" ||
+      status === "dropped" ||
+      status === "bounce" ||
+      status === "blocked"
+    )
+      line.classList.add("failed");
+    else line.classList.add("info");
+    msg.append(
+      "SendGrid Activity for ",
+      target,
+      ": ",
+      activity.status || "unknown",
+    );
+    if (activity.reason) msg.append(" — " + activity.reason);
+    if (activity.last_event_time) msg.append(" — " + activity.last_event_time);
   } else if (state === "failed") {
     line.classList.add("failed");
     msg.append("Failed for ", target);
@@ -6981,6 +7307,65 @@ function updateTestingMailLog(line, to, state, errorMessage) {
     line.classList.add("info");
     msg.append("Sending to ", target, "…");
   }
+}
+
+function pickRelevantSendgridActivity(messages, sendData) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+  const xMessageId = String((sendData && sendData.message_id) || "").trim();
+  if (xMessageId) {
+    const byId = messages.find((m) => {
+      const msgId = String(m.msg_id || m.message_id || "");
+      return msgId.includes(xMessageId) || xMessageId.includes(msgId);
+    });
+    if (byId) return byId;
+  }
+  return messages[0];
+}
+
+function scheduleSendgridActivityCheck(smtpId, to, line, sendData) {
+  if (!smtpId || !to || !line) return;
+  setTimeout(async () => {
+    try {
+      const res = await api("sendgrid_activity", "POST", {
+        smtp_config_id: smtpId,
+        limit: 10,
+        to_email: to,
+      });
+      if (!res.success) {
+        updateTestingMailLog(
+          line,
+          to,
+          "accepted",
+          "Activity check unavailable: " + (res.error || "unknown error"),
+          sendData,
+        );
+        return;
+      }
+      const messages = Array.isArray(res.data && res.data.messages)
+        ? res.data.messages
+        : [];
+      const activity = pickRelevantSendgridActivity(messages, sendData);
+      if (!activity) {
+        updateTestingMailLog(
+          line,
+          to,
+          "accepted",
+          "not visible in Activity Feed yet",
+          sendData,
+        );
+        return;
+      }
+      updateTestingMailLog(line, to, "delivery", null, activity);
+    } catch (e) {
+      updateTestingMailLog(
+        line,
+        to,
+        "accepted",
+        "Activity check failed: " + ((e && e.message) || "network error"),
+        sendData,
+      );
+    }
+  }, 12000);
 }
 
 // ----- SendGrid Activity (Lab) ------------------------------------------------
@@ -7212,7 +7597,14 @@ async function initConfig() {
     addSmtpBtn.addEventListener("click", () => {
       clearSmtpForm();
       const form = document.getElementById("smtpForm");
-      if (form) form.classList.remove("hidden");
+      if (form) {
+        form.classList.remove("hidden");
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      setTimeout(() => {
+        const first = document.getElementById("smtpName");
+        if (first) first.focus({ preventScroll: true });
+      }, 80);
     });
   }
 
@@ -7387,16 +7779,22 @@ async function editSmtpConfig(id) {
     toggleSmtpFields(provEl.value);
   }
   const isSes = (c.provider || "") === "ses";
+  const isMaskedSecret = (value) => /^\s*[\*•●]+\s*$/.test(String(value || ""));
   if (isSes) {
     document.getElementById("smtpApiKey").value = "";
     let ak = c.access_key || "";
     if (!ak && c.api_key && String(c.api_key).startsWith("AKIA"))
       ak = c.api_key;
     document.getElementById("smtpAwsAccessKey").value = ak;
-    document.getElementById("smtpAwsSecretKey").value =
-      c.secret_key || c.password || "";
+    document.getElementById("smtpAwsSecretKey").value = isMaskedSecret(
+      c.secret_key || c.password,
+    )
+      ? ""
+      : c.secret_key || c.password || "";
   } else {
-    document.getElementById("smtpApiKey").value = c.api_key || "";
+    document.getElementById("smtpApiKey").value = isMaskedSecret(c.api_key)
+      ? ""
+      : c.api_key || "";
     document.getElementById("smtpAwsAccessKey").value = "";
     document.getElementById("smtpAwsSecretKey").value = "";
   }
@@ -7412,7 +7810,9 @@ async function editSmtpConfig(id) {
   document.getElementById("smtpPort").value =
     c.port != null && c.port !== "" ? c.port : 587;
   document.getElementById("smtpUser").value = c.username || "";
-  document.getElementById("smtpPass").value = c.password || "";
+  document.getElementById("smtpPass").value = isMaskedSecret(c.password)
+    ? ""
+    : c.password || "";
   if (String(c.provider || "").toLowerCase() === "office365") {
     applyMicrosoft365SmtpDefaults("smtpHost", "smtpPort", "smtpUser");
   }
@@ -7491,7 +7891,11 @@ function clearSmtpForm() {
   const prov = document.getElementById("smtpProvider");
   if (prov) {
     prov.value = "brevo";
+    prov.selectedIndex = [...prov.options].findIndex(
+      (o) => o.value === "brevo",
+    );
     toggleSmtpFields("brevo");
+    syncCustomSelect(prov);
   }
   document.getElementById("smtpSecretHint")?.classList.add("hidden");
   const resultEl = document.getElementById("smtpTestResult");
@@ -7886,6 +8290,16 @@ async function saveSmtpConfig() {
         "Microsoft 365: the password (or app password) is required for a new configuration.",
       );
     }
+  }
+  const maskedSecretRe = /^\s*[\*•●]+\s*$/;
+  if (
+    maskedSecretRe.test(data.api_key || "") ||
+    maskedSecretRe.test(data.password || "") ||
+    maskedSecretRe.test(data.secret_key || "")
+  ) {
+    return alert(
+      "The saved secret is masked. Please paste the real key/password before saving.",
+    );
   }
   if (data.provider === "ses") {
     if (!data.access_key)

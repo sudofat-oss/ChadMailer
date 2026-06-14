@@ -175,6 +175,9 @@ async fn run_campaign(
 ) -> AppResult<()> {
     // Load campaign
     let mut campaign = load_campaign(&paths, &campaign_id).await?;
+    let previous_status = campaign.status.clone();
+    let previous_sent = campaign.stats.sent;
+    let previous_failed = campaign.stats.failed;
     let cfg = campaign.config.clone();
 
     // Open a long-lived log writer for the whole campaign (held open for every
@@ -358,14 +361,45 @@ async fn run_campaign(
         return Ok(());
     }
 
-    stats.total.store(total, Ordering::SeqCst);
+    let can_resume_progress = matches!(
+        previous_status.as_str(),
+        "running" | "paused" | "stopped" | "interrupted" | "failed"
+    );
+    let start_index = if can_resume_progress {
+        previous_sent.saturating_add(previous_failed).min(total)
+    } else {
+        0
+    };
+    let initial_sent = if start_index > 0 {
+        previous_sent.min(total)
+    } else {
+        0
+    };
+    let initial_failed = if start_index > 0 {
+        previous_failed.min(total.saturating_sub(initial_sent))
+    } else {
+        0
+    };
 
-    // Update campaign status to running and reset stats
+    stats.total.store(total, Ordering::SeqCst);
+    stats.sent.store(initial_sent, Ordering::SeqCst);
+    stats.failed.store(initial_failed, Ordering::SeqCst);
+    stats.processed.store(
+        initial_sent.saturating_add(initial_failed),
+        Ordering::SeqCst,
+    );
+
+    // Update campaign status to running and preserve progress when relaunching
+    // an interrupted/stopped/paused campaign. This allows editing config while
+    // paused, then restarting the engine with the new config without resending
+    // recipients that were already processed.
     campaign.status = "running".to_string();
     campaign.stats.total = total;
-    campaign.stats.sent = 0;
-    campaign.stats.failed = 0;
-    campaign.stats.pending = total;
+    campaign.stats.sent = initial_sent;
+    campaign.stats.failed = initial_failed;
+    campaign.stats.pending = total
+        .saturating_sub(initial_sent)
+        .saturating_sub(initial_failed);
     campaign.updated_at = crate::core::now_local_string();
     save_campaign(&paths, &campaign).await?;
 
@@ -374,9 +408,11 @@ async fn run_campaign(
         &ProgressEvent {
             campaign_id: campaign_id.clone(),
             status: "running".into(),
-            sent: 0,
-            failed: 0,
-            pending: total,
+            sent: initial_sent,
+            failed: initial_failed,
+            pending: total
+                .saturating_sub(initial_sent)
+                .saturating_sub(initial_failed),
             total,
         },
     );
@@ -384,7 +420,17 @@ async fn run_campaign(
         .log(
             &app_handle,
             "info",
-            &format!("Starting campaign ({total} recipient(s))."),
+            &if start_index > 0 {
+                format!(
+                    "Resuming campaign at recipient {} / {} (sent: {}, failed: {}).",
+                    start_index + 1,
+                    total,
+                    initial_sent,
+                    initial_failed
+                )
+            } else {
+                format!("Starting campaign ({total} recipient(s)).")
+            },
         )
         .await;
 
@@ -453,7 +499,7 @@ async fn run_campaign(
 
     // Main send loop (sequential, robust)
     let mut last_progress = std::time::Instant::now();
-    for (index, recipient) in filtered.iter().enumerate() {
+    for (index, recipient) in filtered.iter().enumerate().skip(start_index) {
         if cancel.is_cancelled() {
             logger
                 .log(&app_handle, "info", "Campaign stopped by user.")

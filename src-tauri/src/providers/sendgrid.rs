@@ -6,11 +6,72 @@ use crate::core::error::{AppError, AppResult};
 use crate::mailer::message::{EmailMessage, SendResult};
 use crate::providers::{json_response, HTTP_CLIENT};
 
+const SENDGRID_US_BASE: &str = "https://api.sendgrid.com";
+const SENDGRID_EU_BASE: &str = "https://api.eu.sendgrid.com";
+
 fn base_url(sendgrid_region: Option<&str>) -> &'static str {
     match sendgrid_region.unwrap_or("").trim() {
-        "eu" => "https://api.eu.sendgrid.com",
-        _ => "https://api.sendgrid.com",
+        "eu" => SENDGRID_EU_BASE,
+        _ => SENDGRID_US_BASE,
     }
+}
+
+fn candidate_bases(sendgrid_region: Option<&str>) -> Vec<&'static str> {
+    match sendgrid_region
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "eu" => vec![SENDGRID_EU_BASE],
+        "global" | "us" => vec![SENDGRID_US_BASE],
+        // The UI labels the empty value as automatic. For all read-only API
+        // discovery calls, try EU first then global. This fixes EU SendGrid
+        // accounts being queried against api.sendgrid.com only.
+        _ => vec![SENDGRID_EU_BASE, SENDGRID_US_BASE],
+    }
+}
+
+fn region_name_for_base(base: &str) -> &'static str {
+    if base == SENDGRID_EU_BASE {
+        "eu"
+    } else {
+        "global"
+    }
+}
+
+async fn get_json(base: &str, path: &str, api_key: &str) -> AppResult<Value> {
+    json_response(
+        HTTP_CLIENT
+            .get(format!("{base}{path}"))
+            .bearer_auth(api_key),
+    )
+    .await
+}
+
+async fn optional_get_json(base: &str, path: &str, api_key: &str) -> Value {
+    match get_json(base, path, api_key).await {
+        Ok(data) => json!({ "ok": true, "data": data }),
+        Err(e) => json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+async fn first_successful_get(
+    api_key: &str,
+    sendgrid_region: Option<&str>,
+    path: &str,
+) -> AppResult<(&'static str, Value)> {
+    let mut errors = Vec::new();
+    for base in candidate_bases(sendgrid_region) {
+        match get_json(base, path, api_key).await {
+            Ok(data) => return Ok((base, data)),
+            Err(e) => errors.push(format!("{}: {}", region_name_for_base(base), e)),
+        }
+    }
+    Err(AppError::Security(format!(
+        "SendGrid API failed on all regions — {}",
+        errors.join(" | ")
+    )))
 }
 
 pub async fn send_email(
@@ -27,6 +88,8 @@ pub async fn send_email(
     } else {
         Some(cfg.sendgrid_region.as_str())
     };
+    // Do not auto-fallback on an actual send: retrying a mail/send request on
+    // another region after an ambiguous network failure could duplicate mail.
     let base = base_url(region);
 
     let mut content = Vec::new();
@@ -107,16 +170,14 @@ pub async fn ping(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<Val
     if api_key.trim().is_empty() {
         return Err(AppError::Validation("SendGrid API key required".into()));
     }
-    let base = base_url(sendgrid_region);
-    let profile = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/user/profile"))
-            .bearer_auth(api_key),
-    )
-    .await?;
-    Ok(
-        json!({ "provider": "sendgrid", "region": sendgrid_region.unwrap_or(""), "profile": profile }),
-    )
+    let (base, profile) =
+        first_successful_get(api_key, sendgrid_region, "/v3/user/profile").await?;
+    Ok(json!({
+        "provider": "sendgrid",
+        "region": region_name_for_base(base),
+        "base_used": base,
+        "profile": profile,
+    }))
 }
 
 pub async fn inspect(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<Value> {
@@ -124,46 +185,62 @@ pub async fn inspect(api_key: &str, sendgrid_region: Option<&str>) -> AppResult<
         return Err(AppError::Validation("SendGrid API key required".into()));
     }
 
-    let base = base_url(sendgrid_region);
+    let (base, profile) =
+        first_successful_get(api_key, sendgrid_region, "/v3/user/profile").await?;
 
-    let profile = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/user/profile"))
-            .bearer_auth(api_key),
-    )
-    .await?;
+    let account = optional_get_json(base, "/v3/user/account", api_key).await;
+    let credits = optional_get_json(base, "/v3/user/credits", api_key).await;
+    let scopes = optional_get_json(base, "/v3/scopes", api_key).await;
+    let verified_senders_raw = optional_get_json(base, "/v3/verified_senders", api_key).await;
+    let legacy_senders_raw = optional_get_json(base, "/v3/senders", api_key).await;
+    let domains_raw = optional_get_json(base, "/v3/whitelabel/domains", api_key).await;
 
-    let scopes = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/scopes"))
-            .bearer_auth(api_key),
-    )
-    .await
-    .unwrap_or(Value::Null);
+    let mut identities = Vec::new();
+    if let Some(data) = verified_senders_raw.get("data") {
+        collect_verified_sender_identities(data, &mut identities);
+    }
+    if let Some(data) = legacy_senders_raw.get("data") {
+        collect_legacy_sender_identities(data, &mut identities);
+    }
+    if let Some(data) = domains_raw.get("data") {
+        collect_authenticated_domain_identities(data, &mut identities);
+    }
+    dedupe_identities(&mut identities);
+    let verified_count = identities
+        .iter()
+        .filter(|item| {
+            item.get("verified")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        })
+        .count();
+    let unverified_count = identities.len().saturating_sub(verified_count);
 
-    let account = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/user/account"))
-            .bearer_auth(api_key),
-    )
-    .await
-    .unwrap_or(Value::Null);
-
-    let verified = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/verified_senders"))
-            .bearer_auth(api_key),
-    )
-    .await
-    .unwrap_or(Value::Null);
+    let quota_summary = build_credits_summary(credits.get("data").unwrap_or(&Value::Null));
 
     Ok(json!({
         "provider": "sendgrid",
-        "region": sendgrid_region.unwrap_or(""),
+        "region": region_name_for_base(base),
+        "base_used": base,
         "profile": profile,
         "account": account,
+        "credits": credits,
+        "quota_summary": quota_summary,
         "scopes": scopes,
-        "verified_senders": verified,
+        "identity_summary": {
+            "count": identities.len(),
+            "verified_count": verified_count,
+            "unverified_count": unverified_count,
+            "identities": identities,
+            "sources": {
+                "verified_senders": verified_senders_raw.get("ok").and_then(Value::as_bool).unwrap_or(false),
+                "legacy_senders": legacy_senders_raw.get("ok").and_then(Value::as_bool).unwrap_or(false),
+                "authenticated_domains": domains_raw.get("ok").and_then(Value::as_bool).unwrap_or(false)
+            }
+        },
+        "verified_senders": verified_senders_raw,
+        "senders": legacy_senders_raw,
+        "authenticated_domains": domains_raw,
     }))
 }
 
@@ -171,89 +248,242 @@ pub async fn verified_senders(
     api_key: &str,
     sendgrid_region: Option<&str>,
 ) -> AppResult<Vec<Value>> {
-    let base = base_url(sendgrid_region);
-    let response = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/verified_senders"))
-            .bearer_auth(api_key),
-    )
-    .await?;
+    if api_key.trim().is_empty() {
+        return Err(AppError::Validation("SendGrid API key required".into()));
+    }
 
-    let mut out = Vec::new();
-    if let Some(results) = response.get("results").and_then(Value::as_array) {
-        for item in results {
-            let verified = item
-                .get("verified")
-                .and_then(|v| v.get("status"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if !verified {
-                continue;
-            }
-            let email = item
-                .get("from_email")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if email.is_empty() {
-                continue;
-            }
-            let name = item
-                .get("from_name")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let label = if name.is_empty() {
-                email.clone()
+    let mut last_error = None;
+    for base in candidate_bases(sendgrid_region) {
+        let mut out = Vec::new();
+
+        match get_json(base, "/v3/verified_senders", api_key).await {
+            Ok(response) => collect_verified_sender_identities(&response, &mut out),
+            Err(e) => last_error = Some(e.to_string()),
+        }
+        if let Ok(response) = get_json(base, "/v3/senders", api_key).await {
+            collect_legacy_sender_identities(&response, &mut out);
+        }
+        if let Ok(response) = get_json(base, "/v3/whitelabel/domains", api_key).await {
+            collect_authenticated_domain_identities(&response, &mut out);
+        }
+
+        dedupe_identities(&mut out);
+        if !out.is_empty() {
+            return Ok(out);
+        }
+
+        // If the mandatory profile endpoint works but no identity endpoint has
+        // data, do not keep trying unrelated regions unless region is automatic.
+        if sendgrid_region.is_some() {
+            return Ok(out);
+        }
+    }
+
+    if let Some(err) = last_error {
+        return Err(AppError::Security(format!(
+            "SendGrid identities unavailable: {err}"
+        )));
+    }
+    Ok(Vec::new())
+}
+
+fn array_from_response(value: &Value) -> Vec<&Value> {
+    if let Some(arr) = value.as_array() {
+        return arr.iter().collect();
+    }
+    for key in ["results", "senders", "domains", "result"] {
+        if let Some(arr) = value.get(key).and_then(Value::as_array) {
+            return arr.iter().collect();
+        }
+    }
+    Vec::new()
+}
+
+fn value_is_truthy(value: Option<&Value>, default_when_missing: bool) -> bool {
+    match value {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => matches!(
+            s.trim().to_ascii_lowercase().as_str(),
+            "true" | "yes" | "1" | "verified" | "valid" | "success"
+        ),
+        Some(Value::Object(map)) => {
+            if let Some(status) = map.get("status") {
+                value_is_truthy(Some(status), false)
+            } else if let Some(valid) = map.get("valid") {
+                value_is_truthy(Some(valid), false)
             } else {
-                format!("{name} <{email}>")
-            };
-            out.push(json!({
-                "email": email,
-                "name": name,
-                "label": label,
-            }));
+                default_when_missing
+            }
+        }
+        Some(Value::Number(n)) => n.as_i64().unwrap_or(0) != 0,
+        Some(_) => default_when_missing,
+        None => default_when_missing,
+    }
+}
+
+fn collect_verified_sender_identities(response: &Value, out: &mut Vec<Value>) {
+    for item in array_from_response(response) {
+        let verified = value_is_truthy(item.get("verified"), false)
+            || value_is_truthy(item.get("status"), false)
+            || value_is_truthy(item.get("is_verified"), false);
+
+        let email = first_string(item, &["from_email", "email", "sender_email"]);
+        if email.is_empty() {
+            continue;
+        }
+        let name = first_string(item, &["from_name", "name", "nickname"]);
+        push_email_identity(out, &email, &name, None, "single sender", verified);
+    }
+}
+
+fn collect_legacy_sender_identities(response: &Value, out: &mut Vec<Value>) {
+    for item in array_from_response(response) {
+        let verified = value_is_truthy(item.get("verified"), true)
+            || value_is_truthy(item.get("verified_status"), false);
+
+        let mut email = first_string(item, &["from_email", "email", "sender_email"]);
+        if email.is_empty() {
+            email = nested_string(item, &["from", "email"]);
+        }
+        if email.is_empty() {
+            continue;
+        }
+        let mut name = first_string(item, &["from_name", "name", "nickname"]);
+        if name.is_empty() {
+            name = nested_string(item, &["from", "name"]);
+        }
+        push_email_identity(out, &email, &name, None, "sender identity", verified);
+    }
+}
+
+fn collect_authenticated_domain_identities(response: &Value, out: &mut Vec<Value>) {
+    for item in array_from_response(response) {
+        if !value_is_truthy(item.get("valid"), true) {
+            continue;
+        }
+        let domain = first_string(item, &["domain"]);
+        if domain.is_empty() {
+            continue;
+        }
+        let subdomain = first_string(item, &["subdomain"]);
+        let label = if subdomain.is_empty() {
+            format!("@{domain} (authenticated domain — any address)")
+        } else {
+            format!("@{domain} (authenticated domain, DNS subdomain: {subdomain})")
+        };
+        out.push(json!({
+            "email": format!("noreply@{domain}"),
+            "name": "",
+            "domain": domain,
+            "source": "authenticated domain",
+            "verified": true,
+            "label": label,
+        }));
+    }
+}
+
+fn push_email_identity(
+    out: &mut Vec<Value>,
+    email: &str,
+    name: &str,
+    domain: Option<&str>,
+    source: &str,
+    verified: bool,
+) {
+    let base_label = if name.trim().is_empty() {
+        email.to_string()
+    } else {
+        format!("{} <{}>", name.trim(), email.trim())
+    };
+    let label = if verified {
+        format!("{base_label} — verified")
+    } else {
+        format!("{base_label} — unverified")
+    };
+    let mut item = json!({
+        "email": email.trim(),
+        "name": name.trim(),
+        "label": label,
+        "source": source,
+        "verified": verified,
+    });
+    if let Some(domain) = domain.filter(|s| !s.trim().is_empty()) {
+        item["domain"] = Value::String(domain.trim().to_string());
+    }
+    out.push(item);
+}
+
+fn dedupe_identities(items: &mut Vec<Value>) {
+    let mut seen = std::collections::HashSet::new();
+    items.retain(|item| {
+        let email = item
+            .get("email")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let domain = item
+            .get("domain")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let key = if domain.is_empty() {
+            format!("email:{email}")
+        } else {
+            format!("domain:{domain}")
+        };
+        !key.ends_with(':') && seen.insert(key)
+    });
+}
+
+fn first_string(item: &Value, keys: &[&str]) -> String {
+    keys.iter()
+        .find_map(|key| item.get(*key).and_then(Value::as_str))
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+fn nested_string(item: &Value, path: &[&str]) -> String {
+    let mut cur = item;
+    for key in path {
+        match cur.get(*key) {
+            Some(next) => cur = next,
+            None => return String::new(),
         }
     }
+    cur.as_str().unwrap_or("").trim().to_string()
+}
 
-    // Most SendGrid accounts use Domain Authentication rather than Single
-    // Sender Verification, in which case `/v3/verified_senders` is empty but
-    // you can send from any address on the authenticated domain. Surface those
-    // domains too (best-effort; ignored if the call fails or scope is missing).
-    if let Ok(domains) = json_response(
-        HTTP_CLIENT
-            .get(format!("{base}/v3/whitelabel/domains"))
-            .bearer_auth(api_key),
-    )
-    .await
-    {
-        if let Some(arr) = domains.as_array() {
-            for d in arr {
-                let valid = d.get("valid").and_then(Value::as_bool).unwrap_or(false);
-                if !valid {
-                    continue;
-                }
-                let domain = d.get("domain").and_then(Value::as_str).unwrap_or("");
-                if domain.is_empty() {
-                    continue;
-                }
-                let subdomain = d.get("subdomain").and_then(Value::as_str).unwrap_or("");
-                let sending_domain = if subdomain.is_empty() {
-                    domain.to_string()
-                } else {
-                    format!("{subdomain}.{domain}")
-                };
-                out.push(json!({
-                    "email": format!("noreply@{sending_domain}"),
-                    "name": "",
-                    "domain": sending_domain,
-                    "label": format!("@{sending_domain} (authenticated domain — any address)"),
-                }));
+fn build_credits_summary(credits: &Value) -> Value {
+    if credits.is_null() {
+        return Value::Null;
+    }
+
+    let total = number_at_any(credits, &["total", "total_credits", "quota", "limit"]);
+    let used = number_at_any(credits, &["used", "credits_used", "usage"]);
+    let remaining = number_at_any(
+        credits,
+        &["remaining", "remain", "credits_remaining", "available"],
+    );
+
+    json!({
+        "total": total,
+        "used": used,
+        "remaining": remaining,
+        "raw": credits,
+    })
+}
+
+fn number_at_any(value: &Value, keys: &[&str]) -> Value {
+    for key in keys {
+        if let Some(v) = value.get(*key) {
+            if v.is_number() || v.is_string() {
+                return v.clone();
             }
         }
     }
-
-    Ok(out)
+    Value::Null
 }
 
 pub async fn activity(
@@ -267,7 +497,6 @@ pub async fn activity(
         return Err(AppError::Validation("SendGrid API key required".into()));
     }
 
-    let base = base_url(sendgrid_region);
     let limit = limit.clamp(1, 100);
 
     let mut query_parts: Vec<String> = Vec::new();
@@ -283,24 +512,35 @@ pub async fn activity(
         Some(query_parts.join(" AND "))
     };
 
-    let mut req = HTTP_CLIENT
-        .get(format!("{base}/v3/messages"))
-        .bearer_auth(api_key)
-        .query(&[("limit", limit.to_string())]);
-    if let Some(q) = &query {
-        req = req.query(&[("query", q.clone())]);
+    let mut errors = Vec::new();
+    for base in candidate_bases(sendgrid_region) {
+        let mut req = HTTP_CLIENT
+            .get(format!("{base}/v3/messages"))
+            .bearer_auth(api_key)
+            .query(&[("limit", limit.to_string())]);
+        if let Some(q) = &query {
+            req = req.query(&[("query", q.clone())]);
+        }
+
+        match json_response(req).await {
+            Ok(response) => {
+                let messages = response
+                    .get("messages")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                return Ok(json!({
+                    "base_used": base,
+                    "region": region_name_for_base(base),
+                    "messages": messages,
+                }));
+            }
+            Err(e) => errors.push(format!("{}: {}", region_name_for_base(base), e)),
+        }
     }
 
-    let response = json_response(req).await?;
-
-    let messages = response
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-
-    Ok(json!({
-        "base_used": base,
-        "messages": messages,
-    }))
+    Err(AppError::Security(format!(
+        "SendGrid activity unavailable — {}",
+        errors.join(" | ")
+    )))
 }
