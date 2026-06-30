@@ -18,6 +18,7 @@ const state = {
   templates: [],
   smtpConfigs: [],
   campaignsCache: [],
+  suppressSmtpSelectChange: false,
   paused: false,
   /** Headers of the last imported CSV (exact column names) */
   csvHeaders: [],
@@ -815,6 +816,7 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
         hint.classList.remove("hidden");
       }
     }
+    syncCustomSelect(sel);
   }
 }
 
@@ -2588,11 +2590,11 @@ async function backToCampaignListFromForm() {
   document.getElementById("campaignForm").classList.add("hidden");
   resetNewCampaignForm();
   if (returnToMonitoringId) {
-    showCampaignDetail(returnToMonitoringId);
+    await showCampaignDetail(returnToMonitoringId);
   } else {
     document.getElementById("campaignsList").classList.remove("hidden");
     document.getElementById("newCampaignBtn").classList.remove("hidden");
-    loadCampaigns();
+    await loadCampaigns();
   }
 }
 
@@ -2993,6 +2995,7 @@ function toggleCampaignSmtpNewPanel(show) {
 }
 
 function onCampaignSmtpSelectChange() {
+  if (state.suppressSmtpSelectChange) return;
   const sel = document.getElementById("smtpConfigSelect");
   if (!sel) return;
   if (
@@ -3501,9 +3504,9 @@ async function initDashboard() {
   }
 }
 
-function goToMonitoring(campaignId) {
+async function goToMonitoring(campaignId) {
   showSection("campaigns");
-  showCampaignDetail(campaignId);
+  await showCampaignDetail(campaignId);
 }
 
 function campaignIsActiveStatus(status) {
@@ -3524,7 +3527,7 @@ function bindCampaignDetailInteractions() {
     const campaignId =
       btn.getAttribute("data-campaign-id") || state.currentCampaignId;
     if (action === "back") {
-      backToCampaignList();
+      void backToCampaignList();
     } else if (action === "pause") {
       void handlePause();
     } else if (action === "stop") {
@@ -5272,7 +5275,7 @@ async function initCampaigns() {
   const campaignsList = document.getElementById("campaignsList");
   if (campaignsList && campaignsList.dataset.boundCampaignActions !== "1") {
     campaignsList.dataset.boundCampaignActions = "1";
-    campaignsList.addEventListener("click", (e) => {
+    campaignsList.addEventListener("click", async (e) => {
       const actionBtn = e.target.closest("[data-campaign-action]");
       const card = e.target.closest(".campaign-card[data-campaign-id]");
       const campaignId =
@@ -5284,14 +5287,14 @@ async function initCampaigns() {
         e.preventDefault();
         e.stopPropagation();
         const action = actionBtn.getAttribute("data-campaign-action");
-        if (action === "monitor") showCampaignDetail(campaignId);
-        else if (action === "edit") openEditCampaign(campaignId);
-        else if (action === "relaunch") relaunchCampaign(campaignId);
+        if (action === "monitor") await showCampaignDetail(campaignId);
+        else if (action === "edit") await openEditCampaign(campaignId);
+        else if (action === "relaunch") await relaunchCampaign(campaignId);
         else if (action === "delete") deleteCampaignCard(campaignId);
         return;
       }
 
-      showCampaignDetail(campaignId);
+      await showCampaignDetail(campaignId);
     });
   }
 
@@ -5582,8 +5585,13 @@ async function populateSmtpSelect(preferId = null, options = {}) {
         ? select.value
         : "";
 
+  state.suppressSmtpSelectChange = true;
+
   const res = await api("smtp_configs");
-  if (!res.success) return;
+  if (!res.success) {
+    state.suppressSmtpSelectChange = false;
+    return;
+  }
   state.smtpConfigs = res.data || [];
 
   const opts = [
@@ -5605,10 +5613,13 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   if (keep && optValues.includes(keep)) {
     select.value = keep;
     toggleCampaignSmtpNewPanel(false);
+    syncCustomSelect(select);
   } else if (select.value === "__new__") {
     toggleCampaignSmtpNewPanel(true);
+    syncCustomSelect(select);
   } else {
     toggleCampaignSmtpNewPanel(false);
+    syncCustomSelect(select);
   }
 
   syncRotationSelectionWithPrimarySmtp();
@@ -5616,6 +5627,7 @@ async function populateSmtpSelect(preferId = null, options = {}) {
   syncSmtpSenderOverridesDisabledState();
   syncCampaignFromEmailVisibility();
 
+  state.suppressSmtpSelectChange = false;
   await refreshCampaignVerifiedSenders({
     silent: true,
     preferredEmail: preferredFromEmail,
@@ -6103,12 +6115,16 @@ async function confirmSendSummaryAndRun() {
 
   startCampaignCompletionWatch(campaignId, name);
 
+  // Wait for the engine to flip the campaign status to an active state before
+  // rendering the monitoring view — otherwise pause/stop buttons won't appear.
+  await waitForCampaignActiveStatus(campaignId);
+
   state.editingCampaignId = null;
   state.resumeCampaignAfterEdit = false;
   state.editReturnToMonitoringId = null;
   setCampaignFormEditMode(false);
   document.getElementById("campaignForm")?.classList.add("hidden");
-  showCampaignDetail(campaignId);
+  await showCampaignDetail(campaignId);
 }
 
 // ============================================
@@ -6135,8 +6151,13 @@ async function showCampaignDetail(campaignId) {
   if (logsContainer)
     logsContainer.innerHTML = '<div class="log-line info">Loading...</div>';
 
-  // Load campaign with logs
-  const res = await api("campaign&id=" + campaignId + "&with_logs");
+  // Load campaign with logs — retry once to account for filesystem timing on
+  // Windows where the engine may not have flushed the status yet.
+  let res = await api("campaign&id=" + campaignId + "&with_logs");
+  if (!res.success || !res.data) {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    res = await api("campaign&id=" + campaignId + "&with_logs");
+  }
   if (!res.success || !res.data) {
     if (logsContainer)
       logsContainer.innerHTML =
@@ -6300,7 +6321,7 @@ async function showCampaignDetail(campaignId) {
   }
 }
 
-function backToCampaignList() {
+async function backToCampaignList() {
   stopCampaignMonitor();
   state.paused = false;
 
@@ -6311,7 +6332,7 @@ function backToCampaignList() {
   if (list) list.classList.remove("hidden");
   if (newBtn) newBtn.classList.remove("hidden");
 
-  loadCampaigns();
+  await loadCampaigns();
 }
 
 async function relaunchCampaign(campaignId) {
@@ -6325,9 +6346,29 @@ async function relaunchCampaign(campaignId) {
   const res = await api("send", "POST", { campaign_id: campaignId });
   if (!res.success) return alert("Relaunch error: " + (res.error || ""));
 
+  // Wait for the engine to set the campaign status to an active state before
+  // showing the monitoring view — otherwise the pause/stop buttons won't
+  // appear because the status on disk is still the old one.
+  await waitForCampaignActiveStatus(campaignId);
+
   const campRes = await api("campaign&id=" + encodeURIComponent(campaignId));
   startCampaignCompletionWatch(campaignId, campRes.data?.name || "");
-  showCampaignDetail(campaignId);
+  await showCampaignDetail(campaignId);
+}
+
+async function waitForCampaignActiveStatus(campaignId, maxWaitMs = 3000) {
+  const started = Date.now();
+  while (Date.now() - started < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    try {
+      const res = await api("campaign&id=" + encodeURIComponent(campaignId));
+      if (res.success && res.data && campaignIsActiveStatus(res.data.status)) {
+        return;
+      }
+    } catch (_) {
+      /* retry */
+    }
+  }
 }
 
 function closeDeleteCampaignModal() {
@@ -6370,7 +6411,7 @@ async function confirmDeleteCampaign() {
   const wasCurrent =
     String(state.currentCampaignId || "") === String(campaignId);
   closeDeleteCampaignModal();
-  if (wasCurrent) backToCampaignList();
+  if (wasCurrent) await backToCampaignList();
   else await loadCampaigns();
 }
 
