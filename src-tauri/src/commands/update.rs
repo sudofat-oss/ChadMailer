@@ -116,7 +116,10 @@ fn pick_download_url(assets: &[GitHubAsset], fallback: &str) -> String {
 
 #[tauri::command]
 pub async fn check_for_update() -> Result<UpdateInfo, AppError> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| AppError::Validation(format!("Failed to create HTTP client: {e}")))?;
 
     let release: GitHubRelease = client
         .get(GITHUB_RELEASES_URL)
@@ -176,7 +179,10 @@ pub async fn install_update(
     tokio::fs::create_dir_all(&update_dir).await?;
     let destination = update_dir.join(&filename);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|e| AppError::Validation(format!("Failed to create HTTP client: {e}")))?;
     let bytes = client
         .get(url)
         .header("User-Agent", format!("ChadMailer/{CURRENT_VERSION}"))

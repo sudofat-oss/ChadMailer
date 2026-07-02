@@ -564,6 +564,9 @@ function getFromEmailValue() {
   const sel = document.getElementById("fromEmailSelect");
   const inp = document.getElementById("fromEmail");
   if (sel && !sel.classList.contains("hidden")) {
+    if (sel.value === CUSTOM_FROM_OPTION) {
+      return (inp ? inp.value : "").trim();
+    }
     const meta = getCampaignSelectedFromMeta();
     if (meta && meta.domain) return getVerifiedDomainFromEmailValue();
     return (sel.value || "").trim();
@@ -774,6 +777,19 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
       sel.appendChild(o);
     });
 
+    const selectedMeta = getCampaignSmtpContextForVerifiedSenders();
+    const provider = (selectedMeta && selectedMeta.provider) || "";
+    const allowCustom =
+      CUSTOM_FROM_PROVIDERS.has(provider) || senders.some((s) => s.domain);
+
+    let customOptionSelected = false;
+    if (allowCustom) {
+      const oCustom = document.createElement("option");
+      oCustom.value = CUSTOM_FROM_OPTION;
+      oCustom.textContent = "✏️ Custom address…";
+      sel.appendChild(oCustom);
+    }
+
     const pref = (preferredEmail || "").trim().toLowerCase();
     const prefParts = splitEmailAddress(pref);
     let picked = "";
@@ -792,11 +808,32 @@ function applyCampaignFromEmailApiMode(senders, preferredEmail) {
           sel.value = domainMatch.email;
           picked = domainMatch.email;
         }
+      } else if (allowCustom && pref) {
+        sel.value = CUSTOM_FROM_OPTION;
+        customOptionSelected = true;
+        picked = CUSTOM_FROM_OPTION;
+        if (inp) {
+          inp.classList.remove("hidden");
+          inp.value = preferredEmail || "";
+        }
       }
     }
-    if (!picked && senders.length === 1) {
+    if (!picked && senders.length === 1 && !allowCustom) {
       sel.value = String(senders[0].email || "");
       picked = sel.value;
+    }
+    if (!picked && allowCustom) {
+      sel.value = CUSTOM_FROM_OPTION;
+      customOptionSelected = true;
+      picked = CUSTOM_FROM_OPTION;
+      if (inp) inp.classList.remove("hidden");
+    }
+    if (customOptionSelected && inp) {
+      inp.classList.remove("hidden");
+      if (!pref) inp.value = "";
+    } else if (!customOptionSelected && inp) {
+      inp.classList.add("hidden");
+      inp.value = "";
     }
     updateCampaignVerifiedDomainControls(preferredEmail);
     if (hint) {
@@ -825,6 +862,13 @@ function ensureFromEmailSelectChangeHook() {
   if (!sel || sel.dataset.fromHook === "1") return;
   sel.dataset.fromHook = "1";
   sel.addEventListener("change", () => {
+    const inp = document.getElementById("fromEmail");
+    if (sel.value === CUSTOM_FROM_OPTION && inp) {
+      inp.classList.remove("hidden");
+      if (!inp.value.trim()) inp.focus();
+    } else if (inp) {
+      inp.classList.add("hidden");
+    }
     updateCampaignVerifiedDomainControls();
     refreshCampaignSendButtonState();
   });
@@ -8991,7 +9035,7 @@ async function checkForUpdate() {
       }
     }
   } catch (err) {
-    console.debug("Update check failed (non-critical):", err);
+    console.warn("Update check failed (non-critical):", err);
   }
 }
 
