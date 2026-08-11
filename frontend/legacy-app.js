@@ -2650,13 +2650,13 @@ function campaignUploadUiIsVisible() {
 }
 
 async function openRecipientFilePicker() {
+  let nativeHandled = false;
   try {
-    const handled = await pickRecipientFileNative();
-    if (handled) return;
+    nativeHandled = await pickRecipientFileNative();
   } catch (err) {
-    alert("Error during upload: " + formatUploadError(err));
-    return;
+    console.warn("Native file picker failed, using HTML fallback:", err);
   }
+  if (nativeHandled) return;
   document.getElementById("recipientsFile")?.click();
 }
 
@@ -6739,14 +6739,19 @@ async function initScore() {
 let testingMailFromIdentityMeta = new Map();
 
 /** Providers that allow sending from an arbitrary From address (in addition
- *  to any detected identity): SMTP servers, Office365 and Mailgun (any
- *  address on a verified domain). SendGrid can also use authenticated domains;
- *  if the API key cannot list them, we still allow a manual From address. */
+ *  to any detected identity). All providers support manual entry in Labs and
+ *  campaign form — if the address is not authorized by the provider the send
+ *  may be rejected, but the user can still type it. */
 const CUSTOM_FROM_PROVIDERS = new Set([
   "smtp",
   "office365",
   "mailgun",
   "sendgrid",
+  "brevo",
+  "ses",
+  "amazonses",
+  "mandrill",
+  "postmark",
 ]);
 const CUSTOM_FROM_OPTION = "__custom__";
 

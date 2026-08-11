@@ -166,5 +166,42 @@ pub async fn verified_senders(api_key: &str) -> AppResult<Vec<Value>> {
             }));
         }
     }
+
+    // Also pull verified domains so the user can type any address on them.
+    if let Ok(domains_resp) = json_response(
+        HTTP_CLIENT
+            .get(format!("{BREVO_API}/v3/senders/domains"))
+            .header("api-key", api_key)
+            .header("accept", "application/json"),
+    )
+    .await
+    {
+        let items = domains_resp
+            .get("domains")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten();
+        for domain_item in items {
+            let domain = domain_item
+                .get("domain")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if domain.is_empty() {
+                continue;
+            }
+            let verified = domain_item
+                .get("verified")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            out.push(json!({
+                "email": format!("noreply@{domain}"),
+                "name": "",
+                "domain": domain,
+                "verified": verified,
+                "label": format!("@{domain} (verified domain — any address)"),
+            }));
+        }
+    }
     Ok(out)
 }
